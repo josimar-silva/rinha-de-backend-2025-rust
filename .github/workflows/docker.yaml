@@ -6,6 +6,11 @@ on:
       - main
     tags:
       - "v*.*.*"
+    paths:
+      - 'src/**'
+      - 'Dockerfile'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
   schedule:
     - cron: "0 0 * * 0"
 
