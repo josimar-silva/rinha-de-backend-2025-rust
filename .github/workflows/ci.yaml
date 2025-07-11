@@ -106,7 +106,7 @@ jobs:
 
       - name: Generate code coverage report
         run: |
-          cargo tarpaulin --out Lcov --verbose --all-features \
+          cargo tarpaulin --out Lcov --all-features \
             -- --skip "repo::test::git_upstream_remote"
         env:
           RUST_LOG: info 
