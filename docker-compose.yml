@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:latest
+    hostname: nginx
+    ports:
+      - "9999:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - backend
+      - payment-processor 
+    deploy:
+      resources:
+        limits:
+          cpus: "0.1"
+          memory: "20MB"
+
+  backend-01:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: josimar-silva/rinha-backend-2025:latest
+    hostname: backend-01
+    networks:
+      - backend
+      - payment-processor
+    environment:
+      - PAYMENT_PROCESSOR_URL_DEFAULT=http://payment-processor-default:8001
+      - PAYMENT_PROCESSOR_URL_FALLBACK=http://payment-processor-fallback:8002
+      - REDIS_URL=redis://redis:6379
+    deploy:
+      resources:
+        limits:
+          cpus: "0.7"
+          memory: "160MB"
+
+  backend-02:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: josimar-silva/rinha-backend-2025:latest
+    hostname: backend-02
+    networks:
+      - backend
+      - payment-processor
+    environment:
+      - PAYMENT_PROCESSOR_URL_DEFAULT=http://payment-processor-default:8001
+      - PAYMENT_PROCESSOR_URL_FALLBACK=http://payment-processor-fallback:8002
+      - REDIS_URL=redis://redis:6379
+    deploy:
+      resources:
+        limits:
+          cpus: "0.7"
+          memory: "160MB"
+
+  redis:
+    image: redis:7.2.4-alpine
+    hostname: redis
+    networks:
+      - backend
+    ports:
+      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05" # Minimal CPU for Redis
+          memory: "50MB" # Adjust based on expected load
+
+networks:
+  backend:
+    driver: bridge
+  payment-processor:
+    external: true
