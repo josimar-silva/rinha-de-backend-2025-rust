@@ -41,7 +41,7 @@ jobs:
   generate-binaries:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     needs: [fetch-version]
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.build.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -108,13 +108,13 @@ jobs:
             }
           - {
               NAME: darwin-x64,
-              OS: macos-14,
+              OS: macos-15,
               TOOLCHAIN: stable,
               TARGET: x86_64-apple-darwin
             }
           - {
               NAME: darwin-arm64,
-              OS: macos-14,
+              OS: macos-15,
               TOOLCHAIN: stable,
               TARGET: aarch64-apple-darwin
             }
@@ -137,8 +137,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.build.TOOLCHAIN }}
-          target: ${{ matrix.build.TARGET }}
-          override: true     
+          target: ${{ matrix.build.TARGET }}  
+
+      - name: Add ${{ matrix.build.TARGET }} target
+        run: rustup target add ${{ matrix.build.TARGET }}
 
       - name: Build (linux/macos)
         if: matrix.build.OS != 'windows-2022'
@@ -159,8 +161,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p release/
-          cp {LICENSE-MIT,README.md} release/
-          for bin in 'rinha-de-backend-2025'; do
+          cp {LICENSE,README.md} release/
+
+          for bin in 'rinha-de-backend'; do
             if [ "${{ matrix.build.OS }}" = "windows-2022" ]; then
               bin="${bin}.exe"
             fi
@@ -171,26 +174,26 @@ jobs:
       - name: Create artifacts
         shell: bash
         run: |
+          mkdir -p release
           if [ "${{ matrix.build.OS }}" = "windows-2022" ]; then
-            7z a -tzip "rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.zip" \
+            7z a -tzip "release/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.zip" \
               rinha-de-backend-2025-${{ env.RELEASE_VERSION }}/
           else
-            tar -czvf rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz \
+            tar -czvf "release/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz" \
               rinha-de-backend-2025-${{ env.RELEASE_VERSION }}/
-            shasum -a 512 rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz \
-              > rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz.sha512
+            shasum -a 512 "release/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz" \
+              > "release/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz.sha512"
           fi
 
       - name: Upload artifacts
-        if: success() && needs.fetch-version.outputs.release == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: "rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}"
-          path: "rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}*"
+          path: release/
 
   release:
-    needs: [fetch-version]
-    if: ${{ github.event.workflow_run.conclusion == 'success' && needs.fetch-version.outputs.release == 'true' }}
+    needs: [fetch-version, generate-binaries]
+    if: ${{ github.event.workflow_run.conclusion == 'success' && needs.fetch-version.outputs.RELEASE == 'true' }}
     runs-on: ubuntu-22.04
 
     permissions:
@@ -208,9 +211,6 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Install cargo-edit
-        run: cargo install cargo-edit --features vendored-openssl
-
       - name: Create Git Tag
         run: |
           git config user.name "github-actions[bot]"
@@ -227,9 +227,15 @@ jobs:
           OUTPUT: CHANGELOG.md
           GITHUB_REPO: ${{ github.repository }}
 
+      - name: Download generated binaries 
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2.3.2
         with:
+          files: artifacts/*/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-*
           tag_name: v${{ steps.get_version.outputs.VERSION }}
           name: Release v${{ steps.get_version.outputs.VERSION }}
           body: CHANGELOG.md

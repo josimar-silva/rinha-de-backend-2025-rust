@@ -1,8 +1,6 @@
 FROM lukemathwalker/cargo-chef:0.1.72-rust-1.88-slim-trixie AS chef
 WORKDIR app
 
-RUN apt-get update && apt-get install -y --no-install-recommends libssl-dev pkg-config
-
 FROM chef AS planner
 COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
