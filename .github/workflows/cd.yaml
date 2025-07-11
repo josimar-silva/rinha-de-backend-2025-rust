@@ -1,0 +1,261 @@
+name: Continuous Delivery
+
+on:
+  workflow_run:
+    workflows: ["Continuous Integration"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  fetch-version:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-22.04
+   
+    steps:
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get package version
+        id: get_version
+        run: echo "VERSION=$(cargo pkgid --quiet | cut -d '@' -f 2)" >> $GITHUB_OUTPUT
+
+      - name: Check if version is SNAPSHOT
+        id: check_snapshot
+        run: |
+          VERSION="${{ steps.get_version.outputs.VERSION }}"
+          if [[ "$VERSION" == *"-snapshot"* ]]; then
+            echo "RELEASE=false" >> $GITHUB_OUTPUT
+            echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+          else
+            echo "RELEASE=true" >> $GITHUB_OUTPUT
+            echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+          fi
+
+  generate-binaries:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    needs: [fetch-version]
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        build:
+          - {
+              NAME: linux-x64-glibc,
+              OS: ubuntu-22.04,
+              TOOLCHAIN: stable,
+              TARGET: x86_64-unknown-linux-gnu
+            }
+          - {
+              NAME: linux-x64-musl,
+              OS: ubuntu-22.04,
+              TOOLCHAIN: stable,
+              TARGET: x86_64-unknown-linux-musl
+            }
+          - {
+              NAME: linux-x86-glibc,
+              OS: ubuntu-22.04,
+              TOOLCHAIN: stable,
+              TARGET: i686-unknown-linux-gnu
+            }
+          - {
+              NAME: linux-x86-musl,
+              OS: ubuntu-22.04,
+              TOOLCHAIN: stable,
+              TARGET: i686-unknown-linux-musl
+            }
+          - {
+              NAME: linux-arm64-glibc,
+              OS: ubuntu-22.04,
+              TOOLCHAIN: stable,
+              TARGET: aarch64-unknown-linux-gnu
+            }
+          - {
+              NAME: linux-arm64-musl,
+              OS: ubuntu-22.04,
+              TOOLCHAIN: stable,
+              TARGET: aarch64-unknown-linux-musl
+            }
+          - {
+              NAME: win32-x64-mingw,
+              OS: windows-2022,
+              TOOLCHAIN: stable,
+              TARGET: x86_64-pc-windows-gnu
+            }
+          - {
+              NAME: win32-x64-msvc,
+              OS: windows-2022,
+              TOOLCHAIN: stable,
+              TARGET: x86_64-pc-windows-msvc
+            }
+          - {
+              NAME: win32-x86-msvc,
+              OS: windows-2022,
+              TOOLCHAIN: stable,
+              TARGET: i686-pc-windows-msvc
+            }
+          - {
+              NAME: win32-arm64-msvc,
+              OS: windows-2022,
+              TOOLCHAIN: stable,
+              TARGET: aarch64-pc-windows-msvc
+            }
+          - {
+              NAME: darwin-x64,
+              OS: macos-14,
+              TOOLCHAIN: stable,
+              TARGET: x86_64-apple-darwin
+            }
+          - {
+              NAME: darwin-arm64,
+              OS: macos-14,
+              TOOLCHAIN: stable,
+              TARGET: aarch64-apple-darwin
+            }
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          if [[ "${{ matrix.build.NAME }}" = *"-musl" ]]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends \
+              --allow-unauthenticated musl-tools
+          fi
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.build.TOOLCHAIN }}
+          target: ${{ matrix.build.TARGET }}
+          override: true     
+
+      - name: Build (linux/macos)
+        if: matrix.build.OS != 'windows-2022'
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --release --locked --target ${{ matrix.build.TARGET }}
+
+      - name: Build (windows)
+        if: matrix.build.OS == 'windows-2022'
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --locked --target ${{ matrix.build.TARGET }}
+
+      - name: Prepare assets
+        shell: bash
+        run: |
+          mkdir -p release/
+          cp {LICENSE-MIT,README.md} release/
+          for bin in 'rinha-de-backend-2025'; do
+            if [ "${{ matrix.build.OS }}" = "windows-2022" ]; then
+              bin="${bin}.exe"
+            fi
+            cp "target/${{ matrix.build.TARGET }}/release/${bin}" release/
+          done
+          mv release/ rinha-de-backend-2025-${{ env.RELEASE_VERSION }}/
+
+      - name: Create artifacts
+        shell: bash
+        run: |
+          if [ "${{ matrix.build.OS }}" = "windows-2022" ]; then
+            7z a -tzip "rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.zip" \
+              rinha-de-backend-2025-${{ env.RELEASE_VERSION }}/
+          else
+            tar -czvf rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz \
+              rinha-de-backend-2025-${{ env.RELEASE_VERSION }}/
+            shasum -a 512 rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz \
+              > rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz.sha512
+          fi
+
+      - name: Upload artifacts
+        if: success() && needs.fetch-version.outputs.release == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: "rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}"
+          path: "rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}*"
+
+  release:
+    needs: [fetch-version]
+    if: ${{ github.event.workflow_run.conclusion == 'success' && needs.fetch-version.outputs.release == 'true' }}
+    runs-on: ubuntu-22.04
+
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Install cargo-edit
+        run: cargo install cargo-edit --features vendored-openssl
+
+      - name: Create Git Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ steps.get_version.outputs.VERSION }}"
+          git push origin "v${{ steps.get_version.outputs.VERSION }}"
+
+      - name: Generate a changelog
+        uses: orhun/git-cliff-action@v3
+        with:
+          config: cliff.toml
+          args: --verbose
+        env:
+          OUTPUT: CHANGELOG.md
+          GITHUB_REPO: ${{ github.repository }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2.3.2
+        with:
+          tag_name: v${{ steps.get_version.outputs.VERSION }}
+          name: Release v${{ steps.get_version.outputs.VERSION }}
+          body: CHANGELOG.md
+          draft: false
+          prerelease: true
+
+      - name: Generate next package Version
+        run: |
+          MAJOR=$(echo ${{ env.RELEASE_VERSION }} | cut -d. -f1)
+          MINOR=$(echo ${{ env.RELEASE_VERSION }} | cut -d. -f2)
+          PATCH=$(echo ${{ env.RELEASE_VERSION }} | cut -d. -f3)
+          PATCH=$((PATCH + 1))
+          NEXT_PLUGIN_VERSION="$MAJOR.$MINOR.$PATCH-snapshot"
+          echo "Next Version will be: ${NEXT_PLUGIN_VERSION}"
+          echo "NEXT_PLUGIN_VERSION=${NEXT_PLUGIN_VERSION}" >> $GITHUB_ENV
+
+      - name: Install cargo-set-version
+        run: cargo install cargo-set-version
+
+      - name: Increment package version
+        run: cargo set-version ${{ env.NEXT_PLUGIN_VERSION }}
+
+      - name: Push new package version to repo
+        run: |
+          git config user.name "radagastbot[bot]"
+          git config user.email "radagastbot[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock 
+          git commit -m "chore(release): set next snapshot version"
+          git push
