@@ -21,8 +21,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: josimar-silva/rinha-backend-2025:latest
+    # image: josimar-silva/rinha-backend-2025:latest
     hostname: backend-01
+    ports:
+      - "9999:9999"
     networks:
       - backend
       - payment-processor
@@ -40,8 +42,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: josimar-silva/rinha-backend-2025:latest
+    # image: josimar-silva/rinha-backend-2025:latest
     hostname: backend-02
+    ports:
+      - "9999:9999"
     networks:
       - backend
       - payment-processor
@@ -65,8 +69,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.05" # Minimal CPU for Redis
-          memory: "50MB" # Adjust based on expected load
+          cpus: "0.05"
+          memory: "50MB"
 
 networks:
   backend:
