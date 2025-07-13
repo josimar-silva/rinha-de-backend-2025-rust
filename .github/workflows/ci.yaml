@@ -92,19 +92,15 @@ jobs:
       - name: Setup cargo-tarpaulin
         uses: taiki-e/install-action@cargo-tarpaulin
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
       - name: Set up Docker
         uses: docker-practice/actions-setup-docker@master
         with:
           docker-version: '20.10.7' 
 
       - name: Run tests 
-        run: |
-          cargo test --no-default-features \
-            -- --skip "repo::test::git_upstream_remote"
-        env:
-          RUST_LOG: info 
-
-      - name: Generate code coverage report
         run: |
           cargo tarpaulin --out Lcov --all-features \
             -- --skip "repo::test::git_upstream_remote"

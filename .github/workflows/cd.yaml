@@ -175,23 +175,26 @@ jobs:
             fi
             cp "target/${{ matrix.build.TARGET }}/release/${bin}" release/
           done
+          mv release/ rinha-de-backend-2025-${{ env.RELEASE_VERSION }}/
 
       - name: Create artifacts
         shell: bash
         run: |
           if [ "${{ matrix.build.OS }}" = "windows-2022" ]; then
-            (cd release && 7z a -tzip "../release/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.zip" *)
+            7z a -tzip "rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.zip" \
+              rinha-de-backend-2025-${{ env.RELEASE_VERSION }}/
           else
-            tar -czvf "release/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz" -C release .
-            shasum -a 512 "release/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz" \
-              > "release/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz.sha512"
+            tar -czvf rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz \
+              rinha-de-backend-2025-${{ env.RELEASE_VERSION }}/
+            shasum -a 512 rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz \
+              > rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz.sha512
           fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: "rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}"
-          path: release/
+          path: "rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.*"
 
   release:
     needs: [fetch-version, generate-binaries]
