@@ -10,6 +10,9 @@ jobs:
   fetch-version:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-22.04
+    outputs:
+      release_version: ${{ steps.get_version.outputs.VERSION }}
+      is_release: ${{ steps.check_snapshot.outputs.RELEASE }}
    
     steps:
       - name: Install Rust toolchain
@@ -32,11 +35,10 @@ jobs:
           VERSION="${{ steps.get_version.outputs.VERSION }}"
           if [[ "$VERSION" == *"-snapshot"* ]]; then
             echo "RELEASE=false" >> $GITHUB_OUTPUT
-            echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
           else
             echo "RELEASE=true" >> $GITHUB_OUTPUT
-            echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
           fi
+          echo "Release Version: $VERSION"
 
   generate-binaries:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
@@ -118,6 +120,10 @@ jobs:
               TOOLCHAIN: stable,
               TARGET: aarch64-apple-darwin
             }
+
+    env:
+      RELEASE_VERSION: ${{ needs.fetch-version.outputs.release_version }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -160,7 +166,7 @@ jobs:
       - name: Prepare assets
         shell: bash
         run: |
-          mkdir -p release/
+          mkdir -p release
           cp {LICENSE,README.md} release/
 
           for bin in 'rinha-de-backend'; do
@@ -169,18 +175,14 @@ jobs:
             fi
             cp "target/${{ matrix.build.TARGET }}/release/${bin}" release/
           done
-          mv release/ rinha-de-backend-2025-${{ env.RELEASE_VERSION }}/
 
       - name: Create artifacts
         shell: bash
         run: |
-          mkdir -p release
           if [ "${{ matrix.build.OS }}" = "windows-2022" ]; then
-            7z a -tzip "release/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.zip" \
-              rinha-de-backend-2025-${{ env.RELEASE_VERSION }}/
+            (cd release && 7z a -tzip "../release/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.zip" *)
           else
-            tar -czvf "release/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz" \
-              rinha-de-backend-2025-${{ env.RELEASE_VERSION }}/
+            tar -czvf "release/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz" -C release .
             shasum -a 512 "release/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz" \
               > "release/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-${{ matrix.build.TARGET }}.tar.gz.sha512"
           fi
@@ -193,12 +195,15 @@ jobs:
 
   release:
     needs: [fetch-version, generate-binaries]
-    if: ${{ github.event.workflow_run.conclusion == 'success' && needs.fetch-version.outputs.RELEASE == 'true' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && needs.fetch-version.outputs.is_release == 'true' }}
     runs-on: ubuntu-22.04
 
     permissions:
       contents: write
       packages: write
+    
+    env:
+      RELEASE_VERSION: ${{ needs.fetch-version.outputs.release_version }}
 
     steps:
       - name: Checkout code
@@ -215,8 +220,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "v${{ steps.get_version.outputs.VERSION }}"
-          git push origin "v${{ steps.get_version.outputs.VERSION }}"
+          git tag "v${{ env.RELEASE_VERSION }}"
+          git push origin "v${{ env.RELEASE_VERSION }}"
 
       - name: Generate a changelog
         uses: orhun/git-cliff-action@v3
@@ -236,8 +241,8 @@ jobs:
         uses: softprops/action-gh-release@v2.3.2
         with:
           files: artifacts/*/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-*
-          tag_name: v${{ steps.get_version.outputs.VERSION }}
-          name: Release v${{ steps.get_version.outputs.VERSION }}
+          tag_name: v${{ env.RELEASE_VERSION }}
+          name: Release v${{ env.RELEASE_VERSION }}
           body: CHANGELOG.md
           draft: false
           prerelease: true
