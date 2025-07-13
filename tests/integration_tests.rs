@@ -6,10 +6,11 @@ use actix_web::{App, HttpResponse, test, web};
 use log::{error, info};
 use redis::AsyncCommands;
 use reqwest::Client;
-use rinha_de_backend::{
-	HealthCheckResponse, PaymentProcessorRequest, PaymentRequest,
-	PaymentsSummaryResponse, SummaryData, health_check_worker,
-	payment_processing_worker, payments, payments_summary,
+use rinha_de_backend::api::handlers::{
+	PaymentRequest, PaymentsSummaryResponse, payments, payments_summary,
+};
+use rinha_de_backend::workers::payment_processors::{
+	health_check_worker, payment_processing_worker,
 };
 use serde_json::json;
 use testcontainers::GenericImage;
