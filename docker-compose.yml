@@ -60,7 +60,7 @@ services:
           memory: "160MB"
 
   redis:
-    image: redis:7.2.4-alpine
+    image: redis:8.0.3-alpine
     hostname: redis
     networks:
       - backend
