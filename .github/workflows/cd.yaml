@@ -9,7 +9,7 @@ on:
 jobs:
   fetch-version:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       release_version: ${{ steps.get_version.outputs.VERSION }}
       is_release: ${{ steps.check_snapshot.outputs.RELEASE }}
@@ -199,7 +199,7 @@ jobs:
   release:
     needs: [fetch-version, generate-binaries]
     if: ${{ github.event.workflow_run.conclusion == 'success' && needs.fetch-version.outputs.is_release == 'true' }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     permissions:
       contents: write
