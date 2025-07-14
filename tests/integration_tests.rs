@@ -20,49 +20,10 @@ use testcontainers::runners::AsyncRunner;
 use tokio::time::{Duration, timeout};
 use uuid::Uuid;
 
-// Helper function to create a test Redis client using testcontainers
-async fn get_test_redis_client()
--> (redis::Client, testcontainers::ContainerAsync<GenericImage>) {
-	let container = GenericImage::new("redis", "alpine3.21")
-		.with_exposed_port(ContainerPort::Tcp(6379))
-		.with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
-		.start()
-		.await
-		.unwrap();
-	let host_port = container.get_host_port_ipv4(6379).await;
-	let redis_url = format!("redis://127.0.0.1:{}", host_port.unwrap());
-	let client = redis::Client::open(redis_url).expect("Invalid Redis URL");
-	let mut con = client
-		.get_multiplexed_async_connection()
-		.await
-		.expect("Failed to connect to Redis");
-	// Clear Redis for a clean test environment
-	let _: () = con
-		.del("payments_queue")
-		.await
-		.expect("Failed to clear payments_queue");
-	let _: () = con
-		.del("payments_summary_default")
-		.await
-		.expect("Failed to clear payments_summary_default");
-	let _: () = con
-		.del("payments_summary_fallback")
-		.await
-		.expect("Failed to clear payments_summary_fallback");
-	let _: () = con
-		.del("processed_correlation_ids")
-		.await
-		.expect("Failed to clear processed_correlation_ids");
-	let _: () = con
-		.del("health_default_failing")
-		.await
-		.expect("Failed to clear health_default_failing");
-	let _: () = con
-		.del("health_fallback_failing")
-		.await
-		.expect("Failed to clear health_fallback_failing");
-	(client, container)
-}
+mod infra;
+
+use crate::infra::payment_processor_container::setup_payment_processors;
+use crate::infra::redis_container::get_test_redis_client;
 
 #[actix_web::test]
 async fn test_payments_post() {
@@ -181,46 +142,6 @@ async fn test_payments_summary_get_with_data() {
 	assert_eq!(summary.default.total_amount, 1000.0);
 	assert_eq!(summary.fallback.total_requests, 5);
 	assert_eq!(summary.fallback.total_amount, 500.0);
-}
-
-async fn setup_payment_processors() -> (
-	String,
-	String,
-	testcontainers::ContainerAsync<GenericImage>,
-	testcontainers::ContainerAsync<GenericImage>,
-) {
-	let default_processor_container =
-		GenericImage::new("zanfranceschi/payment-processor", "latest")
-			.with_exposed_port(ContainerPort::Tcp(8080))
-			.with_wait_for(WaitFor::http(
-				HttpWaitStrategy::new("/").with_expected_status_code(200_u16),
-			))
-			.start()
-			.await
-			.unwrap();
-
-	let fallback_processor_container =
-		GenericImage::new("zanfranceschi/payment-processor", "latest")
-			.with_exposed_port(testcontainers::core::ContainerPort::Tcp(8080))
-			.with_wait_for(WaitFor::http(
-				HttpWaitStrategy::new("/").with_expected_status_code(200_u16),
-			))
-			.start()
-			.await
-			.unwrap();
-
-	let default_port = default_processor_container.get_host_port_ipv4(8080).await;
-	let fallback_port = fallback_processor_container.get_host_port_ipv4(8080).await;
-
-	let default_url = format!("http://127.0.0.1:{}", default_port.unwrap());
-	let fallback_url = format!("http://127.0.0.1:{}", fallback_port.unwrap());
-
-	(
-		default_url,
-		fallback_url,
-		default_processor_container,
-		fallback_processor_container,
-	)
 }
 
 #[actix_web::test]
