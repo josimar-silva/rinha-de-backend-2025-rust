@@ -165,14 +165,18 @@ async fn test_health_check_worker_success() {
 		.get_multiplexed_async_connection()
 		.await
 		.unwrap();
-	let default_failing: bool = con.get("health_default_failing").await.unwrap();
-	let _default_min_response_time: u64 =
-		con.get("health_default_min_response_time").await.unwrap();
+	let default_failing: i32 = con.hget("health:default", "failing").await.unwrap();
+	let _default_min_response_time: u64 = con
+		.hget("health:default", "min_response_time")
+		.await
+		.unwrap();
 
-	assert!(!default_failing);
+	assert_eq!(default_failing, 0);
 
-	let _fallback_min_response_time: u64 =
-		con.get("health_fallback_min_response_time").await.unwrap();
+	let _fallback_min_response_time: u64 = con
+		.hget("health:fallback", "min_response_time")
+		.await
+		.unwrap();
 
 	// Abort the worker to clean up
 	worker_handle.abort();
@@ -208,8 +212,8 @@ async fn test_payment_processing_worker_default_success() {
 		.await
 		.unwrap();
 	info!("Payment pushed to queue.");
-	let _: () = con.set("health_default_failing", false).await.unwrap();
-	let _: () = con.set("health_fallback_failing", true).await.unwrap(); // Fallback is failing
+	let _: () = con.hset("health:default", "failing", 0).await.unwrap();
+	let _: () = con.hset("health:fallback", "failing", 1).await.unwrap(); // Fallback is failing
 
 	let worker_handle = tokio::spawn(payment_processing_worker(
 		redis_client.clone(),
@@ -278,8 +282,8 @@ async fn test_payment_processing_worker_fallback_success() {
 		.await
 		.unwrap();
 	info!("Payment pushed to queue.");
-	let _: () = con.set("health_default_failing", true).await.unwrap(); // Default is failing
-	let _: () = con.set("health_fallback_failing", false).await.unwrap();
+	let _: () = con.hset("health:default", "failing", 1).await.unwrap(); // Default is failing
+	let _: () = con.hset("health:fallback", "failing", 0).await.unwrap();
 
 	let worker_handle = tokio::spawn(payment_processing_worker(
 		redis_client.clone(),
@@ -345,8 +349,8 @@ async fn test_payment_processing_worker_requeue_on_failure() {
 		.await
 		.unwrap();
 	info!("Payment pushed to queue.");
-	let _: () = con.set("health_default_failing", true).await.unwrap(); // Both are failing
-	let _: () = con.set("health_fallback_failing", true).await.unwrap();
+	let _: () = con.hset("health:default", "failing", 1).await.unwrap(); // Both are failing
+	let _: () = con.hset("health:fallback", "failing", 1).await.unwrap();
 
 	let worker_handle = tokio::spawn(payment_processing_worker(
 		redis_client.clone(),
@@ -410,8 +414,8 @@ async fn test_payment_processing_worker_skip_processed_correlation_id() {
 		)
 		.await
 		.unwrap();
-	let _: () = con.set("health_default_failing", false).await.unwrap();
-	let _: () = con.set("health_fallback_failing", true).await.unwrap();
+	let _: () = con.hset("health:default", "failing", 0).await.unwrap();
+	let _: () = con.hset("health:fallback", "failing", 1).await.unwrap();
 
 	let worker_handle = tokio::spawn(payment_processing_worker(
 		redis_client.clone(),
@@ -603,17 +607,19 @@ async fn test_health_check_worker_http_failure() {
 	));
 
 	// Give the worker some time to attempt the HTTP call and update Redis
-	tokio::time::sleep(Duration::from_secs(6)).await;
+	tokio::time::sleep(Duration::from_secs(10)).await;
 
 	let mut con = redis_client
 		.get_multiplexed_async_connection()
 		.await
 		.unwrap();
-	let default_failing: bool = con.get("health_default_failing").await.unwrap();
-	let fallback_failing: bool = con.get("health_fallback_failing").await.unwrap();
+	let default_failing: i32 =
+		con.hget("health:default", "failing").await.unwrap_or(0);
+	let fallback_failing: i32 =
+		con.hget("health:fallback", "failing").await.unwrap_or(0);
 
-	assert!(default_failing);
-	assert!(fallback_failing);
+	assert_eq!(default_failing, 1);
+	assert_eq!(fallback_failing, 1);
 
 	// Abort the worker to clean up
 	worker_handle.abort();

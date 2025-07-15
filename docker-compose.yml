@@ -24,7 +24,7 @@ services:
     # image: josimar-silva/rinha-backend-2025:latest
     hostname: backend-01
     ports:
-      - "9999:9999"
+      - "9999:8080"
     networks:
       - backend
       - payment-processor
@@ -45,7 +45,7 @@ services:
     # image: josimar-silva/rinha-backend-2025:latest
     hostname: backend-02
     ports:
-      - "9999:9999"
+      - "9999:8081"
     networks:
       - backend
       - payment-processor

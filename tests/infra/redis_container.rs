@@ -5,7 +5,7 @@ use testcontainers::runners::AsyncRunner;
 
 pub async fn get_test_redis_client()
 -> (redis::Client, testcontainers::ContainerAsync<GenericImage>) {
-	let container = GenericImage::new("redis", "alpine3.21")
+	let container = GenericImage::new("redis", "8.0.3-alpine")
 		.with_exposed_port(ContainerPort::Tcp(6379))
 		.with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
 		.start()
@@ -36,12 +36,12 @@ pub async fn get_test_redis_client()
 		.await
 		.expect("Failed to clear processed_correlation_ids");
 	let _: () = con
-		.del("health_default_failing")
+		.del("health:default")
 		.await
-		.expect("Failed to clear health_default_failing");
+		.expect("Failed to clear health:default");
 	let _: () = con
-		.del("health_fallback_failing")
+		.del("health:fallback")
 		.await
-		.expect("Failed to clear health_fallback_failing");
+		.expect("Failed to clear health:fallback");
 	(client, container)
 }
