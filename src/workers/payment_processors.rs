@@ -41,110 +41,73 @@ pub async fn health_check_worker(
 			Ok(con) => con,
 			Err(e) => {
 				error!("Health check worker failed to get Redis connection: {e}");
-				sleep(Duration::from_secs(5)).await;
+				sleep(Duration::from_secs(3)).await;
 				continue;
 			}
 		};
 
-		// Check default payment processor
-		match client
-			.get(format!("{default_url}/payments/service-health"))
-			.send()
-			.await
-		{
-			Ok(resp) => {
-				if resp.status().is_success() {
-					match resp.json::<HealthCheckResponse>().await {
-						Ok(health) => {
-							let _: Result<(), _> = con
-								.set("health_default_failing", health.failing)
-								.await;
-							let _: Result<(), _> = con
-								.set(
-									"health_default_min_response_time",
-									health.min_response_time,
-								)
-								.await;
-							info!(
-								"Default processor health: failing={}, \
-								 min_response_time={}",
-								health.failing, health.min_response_time
-							);
-						}
-						Err(e) => {
-							error!(
-								"Failed to parse default health check response: {e}"
-							);
-							let _: Result<(), _> =
-								con.set("health_default_failing", true).await;
-						}
-					}
-				} else {
-					error!(
-						"Default processor health check failed with status: {}",
-						resp.status()
-					);
-					let _: Result<(), _> =
-						con.set("health_default_failing", true).await;
-				}
-			}
-			Err(e) => {
-				error!("Failed to reach default payment processor: {e}");
-				let _: Result<(), _> = con.set("health_default_failing", true).await;
-			}
-		}
+		update_processor_health("default", &client, &default_url, &mut con).await;
 
-		// Check fallback payment processor
-		match client
-			.get(format!("{fallback_url}/payments/service-health"))
-			.send()
-			.await
-		{
-			Ok(resp) => {
-				if resp.status().is_success() {
-					match resp.json::<HealthCheckResponse>().await {
-						Ok(health) => {
-							let _: Result<(), _> = con
-								.set("health_fallback_failing", health.failing)
-								.await;
-							let _: Result<(), _> = con
-								.set(
-									"health_fallback_min_response_time",
-									health.min_response_time,
-								)
-								.await;
-							info!(
-								"Fallback processor health: failing={}, \
-								 min_response_time={}",
-								health.failing, health.min_response_time
-							);
-						}
-						Err(e) => {
-							error!(
-								"Failed to parse fallback health check response: \
-								 {e}"
-							);
-							let _: Result<(), _> =
-								con.set("health_fallback_failing", true).await;
-						}
-					}
-				} else {
-					error!(
-						"Fallback processor health check failed with status: {}",
-						resp.status()
-					);
-					let _: Result<(), _> =
-						con.set("health_fallback_failing", true).await;
-				}
-			}
-			Err(e) => {
-				error!("Failed to reach fallback payment processor: {e}");
-				let _: Result<(), _> =
-					con.set("health_fallback_failing", true).await;
-			}
-		}
+		update_processor_health("fallback", &client, &fallback_url, &mut con).await;
 
 		sleep(Duration::from_secs(5)).await;
+	}
+}
+
+async fn update_processor_health(
+	processor: &str,
+	client: &Client,
+	processor_url: &str,
+	con: &mut redis::aio::MultiplexedConnection,
+) {
+	let processor_health_key = format!("health:{processor}");
+
+	match client
+		.get(format!("{processor_url}/payments/service-health"))
+		.send()
+		.await
+	{
+		Ok(resp) => {
+			if resp.status().is_success() {
+				match resp.json::<HealthCheckResponse>().await {
+					Ok(health) => {
+						let _: Result<(), _> = con
+							.hset_multiple(processor_health_key, &[
+								("failing", (health.failing as i32).to_string()),
+								(
+									"min_response_time",
+									health.min_response_time.to_string(),
+								),
+							])
+							.await;
+						info!(
+							"{processor} processor health: failing={}, \
+							 min_response_time={}",
+							health.failing, health.min_response_time
+						);
+					}
+					Err(e) => {
+						error!(
+							"Failed to parse {processor} health check response: {e}"
+						);
+						let _: Result<(), _> =
+							con.hset(processor_health_key, "failing", "1").await;
+					}
+				}
+			} else {
+				error!(
+					"{processor} processor health check failed with status: {}",
+					resp.status()
+				);
+				let _: Result<(), _> =
+					con.hset(processor_health_key, "failing", "1").await;
+			}
+		}
+		Err(e) => {
+			error!("Failed to reach {processor} payment processor: {e}");
+			let _: Result<(), _> =
+				con.hset(processor_health_key, "failing", "1").await;
+		}
 	}
 }
 
@@ -226,9 +189,10 @@ pub async fn payment_processing_worker(
 		}
 
 		let default_failing: bool =
-			con.get("health_default_failing").await.unwrap_or(true);
+			con.hget("health:default", "failing").await.unwrap_or(1i32) != 0;
+
 		let fallback_failing: bool =
-			con.get("health_fallback_failing").await.unwrap_or(true);
+			con.hget("health:fallback", "failing").await.unwrap_or(1i32) != 0;
 
 		let mut processed = false;
 
@@ -256,9 +220,7 @@ pub async fn payment_processing_worker(
 							.arg("payments_summary_default")
 							.arg("totalRequests")
 							.arg(1)
-							.query_async::<redis::aio::MultiplexedConnection, ()>(
-								&mut con,
-							)
+							.query_async::<i64>(&mut con)
 							.await
 						{
 							Ok(_) => {
@@ -276,9 +238,7 @@ pub async fn payment_processing_worker(
 							.arg("payments_summary_default")
 							.arg("totalAmount")
 							.arg(payment.amount)
-							.query_async::<redis::aio::MultiplexedConnection, ()>(
-								&mut con,
-							)
+							.query_async::<f64>(&mut con)
 							.await
 						{
 							Ok(_) => info!(
@@ -350,9 +310,7 @@ pub async fn payment_processing_worker(
 							.arg("payments_summary_fallback")
 							.arg("totalRequests")
 							.arg(1)
-							.query_async::<redis::aio::MultiplexedConnection, ()>(
-								&mut con,
-							)
+							.query_async::<i64>(&mut con)
 							.await
 						{
 							Ok(_) => {
@@ -370,9 +328,7 @@ pub async fn payment_processing_worker(
 							.arg("payments_summary_fallback")
 							.arg("totalAmount")
 							.arg(payment.amount)
-							.query_async::<redis::aio::MultiplexedConnection, ()>(
-								&mut con,
-							)
+							.query_async::<f64>(&mut con)
 							.await
 						{
 							Ok(_) => info!(
