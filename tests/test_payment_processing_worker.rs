@@ -13,6 +13,7 @@ mod support;
 use crate::support::payment_processor_container::setup_payment_processors;
 use crate::support::redis_container::get_test_redis_client;
 
+#[tokio::test]
 async fn test_payment_processing_worker_default_success() {
 	let (redis_client, _) = get_test_redis_client().await;
 	let (default_url, fallback_url, _, _) = setup_payment_processors().await;
@@ -76,6 +77,7 @@ async fn test_payment_processing_worker_default_success() {
 	worker_handle.abort();
 }
 
+#[tokio::test]
 async fn test_payment_processing_worker_fallback_success() {
 	let (redis_client, _) = get_test_redis_client().await;
 	let (default_url, fallback_url, _, _) = setup_payment_processors().await;
@@ -137,6 +139,7 @@ async fn test_payment_processing_worker_fallback_success() {
 	worker_handle.abort();
 }
 
+#[tokio::test]
 #[ignore = "re-queue needs to be reviewed"]
 async fn test_payment_processing_worker_requeue_on_failure() {
 	let (redis_client, _) = get_test_redis_client().await;
@@ -190,6 +193,7 @@ async fn test_payment_processing_worker_requeue_on_failure() {
 	worker_handle.abort();
 }
 
+#[tokio::test]
 async fn test_payment_processing_worker_skip_processed_correlation_id() {
 	let (redis_client, _) = get_test_redis_client().await;
 	let (default_url, fallback_url, _, _) = setup_payment_processors().await;

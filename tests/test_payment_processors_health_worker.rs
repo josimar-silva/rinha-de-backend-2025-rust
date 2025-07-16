@@ -10,6 +10,7 @@ mod support;
 use crate::support::payment_processor_container::setup_payment_processors;
 use crate::support::redis_container::get_test_redis_client;
 
+#[tokio::test]
 async fn test_health_check_worker_success() {
 	let (redis_client, _) = get_test_redis_client().await;
 	let (default_url, fallback_url, _, _) = setup_payment_processors().await;
@@ -46,6 +47,7 @@ async fn test_health_check_worker_success() {
 	worker_handle.abort();
 }
 
+#[tokio::test]
 async fn test_health_check_worker_redis_failure() {
 	let (redis_client, redis_node) = get_test_redis_client().await;
 	let http_client = Client::new();
@@ -70,6 +72,7 @@ async fn test_health_check_worker_redis_failure() {
 	worker_handle.abort();
 }
 
+#[tokio::test]
 async fn test_health_check_worker_http_failure() {
 	let (redis_client, _) = get_test_redis_client().await;
 	let http_client = Client::new();
