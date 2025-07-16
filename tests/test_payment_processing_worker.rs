@@ -3,7 +3,7 @@
 use log::info;
 use redis::AsyncCommands;
 use reqwest::Client;
-use rinha_de_backend::api::handlers::PaymentRequest;
+use rinha_de_backend::api::schema::PaymentRequest;
 use rinha_de_backend::workers::payment_processors::payment_processing_worker;
 use tokio::time::Duration;
 use uuid::Uuid;

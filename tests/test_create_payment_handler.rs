@@ -1,6 +1,7 @@
 use actix_web::{App, test, web};
 use redis::AsyncCommands;
-use rinha_de_backend::api::handlers::{PaymentRequest, payments};
+use rinha_de_backend::api::handlers::payments;
+use rinha_de_backend::api::schema::PaymentRequest;
 use uuid::Uuid;
 
 mod support;

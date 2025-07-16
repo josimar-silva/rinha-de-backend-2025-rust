@@ -1,6 +1,7 @@
 use actix_web::{App, test, web};
 use redis::AsyncCommands;
-use rinha_de_backend::api::handlers::{PaymentsSummaryResponse, payments_summary};
+use rinha_de_backend::api::handlers::payments_summary;
+use rinha_de_backend::api::schema::PaymentsSummaryResponse;
 
 mod support;
 
