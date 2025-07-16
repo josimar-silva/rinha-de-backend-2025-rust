@@ -5,7 +5,6 @@ use testcontainers::{GenericImage, ImageExt};
 
 use crate::support::postgresql_container::setup_postgresql_container;
 
-#[allow(dead_code)]
 pub async fn setup_payment_processors() -> (
 	String,
 	String,

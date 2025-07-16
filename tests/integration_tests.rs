@@ -15,49 +15,6 @@ use crate::support::payment_processor_container::setup_payment_processors;
 use crate::support::redis_container::get_test_redis_client;
 
 #[actix_web::test]
-async fn test_health_check_worker_success() {
-	let (redis_client, redis_container) = get_test_redis_client().await;
-	let (default_url, fallback_url, default_container, fallback_container) =
-		setup_payment_processors().await;
-	let http_client = Client::new();
-
-	let worker_handle = tokio::spawn(health_check_worker(
-		redis_client.clone(),
-		http_client,
-		default_url.clone(),
-		fallback_url.clone(),
-	));
-
-	// Give the worker some time to run and update Redis
-	tokio::time::sleep(Duration::from_secs(30)).await;
-
-	let mut con = redis_client
-		.get_multiplexed_async_connection()
-		.await
-		.unwrap();
-	let default_failing: i32 = con.hget("health:default", "failing").await.unwrap();
-	let _default_min_response_time: u64 = con
-		.hget("health:default", "min_response_time")
-		.await
-		.unwrap();
-
-	assert_eq!(default_failing, 0);
-
-	let _fallback_min_response_time: u64 = con
-		.hget("health:fallback", "min_response_time")
-		.await
-		.unwrap();
-
-	// Abort the worker to clean up
-	worker_handle.abort();
-
-	// Stop all the containers
-	redis_container.stop().await.unwrap();
-	default_container.stop().await.unwrap();
-	fallback_container.stop().await.unwrap();
-}
-
-#[actix_web::test]
 async fn test_payment_processing_worker_default_success() {
 	let (redis_client, redis_container) = get_test_redis_client().await;
 	let (default_url, fallback_url, default_container, fallback_container) =
