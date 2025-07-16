@@ -11,10 +11,10 @@ use rinha_de_backend::workers::payment_processors::{
 use tokio::time::Duration;
 use uuid::Uuid;
 
-mod infra;
+mod support;
 
-use crate::infra::payment_processor_container::setup_payment_processors;
-use crate::infra::redis_container::get_test_redis_client;
+use crate::support::payment_processor_container::setup_payment_processors;
+use crate::support::redis_container::get_test_redis_client;
 
 #[actix_web::test]
 async fn test_payments_post() {

@@ -3,7 +3,7 @@ use testcontainers::core::{ContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{GenericImage, ImageExt};
 
-use crate::infra::postgresql_container::setup_postgresql_container;
+use crate::support::postgresql_container::setup_postgresql_container;
 
 pub async fn setup_payment_processors() -> (
 	String,
