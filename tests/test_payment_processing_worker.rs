@@ -3,7 +3,8 @@ use redis::AsyncCommands;
 use reqwest::Client;
 use rinha_de_backend::api::schema::PaymentRequest;
 use rinha_de_backend::config::{
-	DEFAULT_PROCESSOR_HEALTH_KEY, FALLBACK_PROCESSOR_HEALTH_KEY, PAYMENTS_QUEUE_KEY,
+	DEFAULT_PAYMENT_SUMMARY_KEY, DEFAULT_PROCESSOR_HEALTH_KEY,
+	FALLBACK_PAYMENT_SUMMARY_KEY, FALLBACK_PROCESSOR_HEALTH_KEY, PAYMENTS_QUEUE_KEY,
 	PROCESSED_PAYMENTS_SET_KEY,
 };
 use rinha_de_backend::workers::payment_processor_worker::payment_processing_worker;
@@ -58,28 +59,23 @@ async fn test_payment_processing_worker_default_success() {
 	// Give the worker some time to process the payment
 	tokio::time::sleep(Duration::from_secs(30)).await;
 
-	info!("Attempting to retrieve default total requests from Redis.");
-	let default_total_requests: i64 = con
-		.hget("payments_summary_default", "totalRequests")
-		.await
-		.unwrap();
-	info!("Attempting to retrieve default total amount from Redis.");
-	let default_total_amount: f64 = con
-		.hget("payments_summary_default", "totalAmount")
-		.await
-		.unwrap();
-	info!("Attempting to retrieve processed correlation ID from Redis.");
-	let is_processed: bool = con
-		.sismember(
+	let processed_key = format!(
+		"{}:{}",
+		DEFAULT_PAYMENT_SUMMARY_KEY, payment_req.correlation_id
+	);
+	let processed_amount: f64 = con.hget(&processed_key, "amount").await.unwrap();
+	let processed_at: i64 = con.hget(&processed_key, "processed_at").await.unwrap();
+
+	let score: i64 = con
+		.zscore(
 			PROCESSED_PAYMENTS_SET_KEY,
 			payment_req.correlation_id.to_string(),
 		)
 		.await
 		.unwrap();
 
-	assert_eq!(default_total_requests, 1);
-	assert_eq!(default_total_amount, 250.0);
-	assert!(is_processed);
+	assert_eq!(processed_amount, 250.0);
+	assert_eq!(score, processed_at);
 
 	// Abort the worker to clean up
 	worker_handle.abort();
@@ -90,7 +86,6 @@ async fn test_payment_processing_worker_fallback_success() {
 	let (redis_client, _) = get_test_redis_client().await;
 	let (default_url, fallback_url, _, _) = setup_payment_processors().await;
 	let http_client = Client::new();
-
 	let payment_req = PaymentRequest {
 		correlation_id: Uuid::new_v4(),
 		amount:         300.0,
@@ -128,26 +123,23 @@ async fn test_payment_processing_worker_fallback_success() {
 	// Give the worker some time to process the payment
 	tokio::time::sleep(Duration::from_secs(20)).await;
 
-	let fallback_total_requests: i64 = con
-		.hget("payments_summary_fallback", "totalRequests")
-		.await
-		.unwrap();
-	let fallback_total_amount: f64 = con
-		.hget("payments_summary_fallback", "totalAmount")
-		.await
-		.unwrap();
-	info!("Attempting to retrieve processed correlation ID from Redis.");
-	let is_processed: bool = con
-		.sismember(
+	let processed_key = format!(
+		"{}:{}",
+		FALLBACK_PAYMENT_SUMMARY_KEY, payment_req.correlation_id
+	);
+	let processed_amount: f64 = con.hget(&processed_key, "amount").await.unwrap();
+	let processed_at: i64 = con.hget(&processed_key, "processed_at").await.unwrap();
+
+	let score: i64 = con
+		.zscore(
 			PROCESSED_PAYMENTS_SET_KEY,
 			payment_req.correlation_id.to_string(),
 		)
 		.await
 		.unwrap();
 
-	assert_eq!(fallback_total_requests, 1);
-	assert_eq!(fallback_total_amount, 300.0);
-	assert!(is_processed);
+	assert_eq!(processed_amount, 300.0);
+	assert_eq!(score, processed_at);
 
 	// Abort the worker to clean up
 	worker_handle.abort();
@@ -263,12 +255,14 @@ async fn test_payment_processing_worker_skip_processed_correlation_id() {
 	// Give the worker some time to process
 	tokio::time::sleep(Duration::from_secs(20)).await;
 
-	let default_total_requests: i64 = con
-		.hget("payments_summary_default", "totalRequests")
-		.await
-		.unwrap_or(0);
+	let processed_key = format!(
+		"{}:{}",
+		DEFAULT_PAYMENT_SUMMARY_KEY, payment_req.correlation_id
+	);
+	let processed_amount: Option<f64> =
+		con.hget(&processed_key, "amount").await.unwrap();
 
-	assert_eq!(default_total_requests, 0);
+	assert!(processed_amount.is_none());
 
 	// Abort the worker to clean up
 	worker_handle.abort();

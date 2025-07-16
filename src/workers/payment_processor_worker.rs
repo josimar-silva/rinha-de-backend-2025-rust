@@ -1,14 +1,14 @@
 use std::time::Duration;
 
-use anyhow::Result;
 use chrono::Utc;
-use log::{error, info};
-use redis::AsyncCommands;
+use log::{error, info, warn};
+use redis::{AsyncCommands, RedisResult};
 use reqwest::Client;
 use tokio::time::sleep;
 
 use crate::config::{
-	DEFAULT_PROCESSOR_HEALTH_KEY, FALLBACK_PROCESSOR_HEALTH_KEY, PAYMENTS_QUEUE_KEY,
+	DEFAULT_PAYMENT_SUMMARY_KEY, DEFAULT_PROCESSOR_HEALTH_KEY,
+	FALLBACK_PAYMENT_SUMMARY_KEY, FALLBACK_PROCESSOR_HEALTH_KEY, PAYMENTS_QUEUE_KEY,
 	PROCESSED_PAYMENTS_SET_KEY,
 };
 use crate::model::internal::Payment;
@@ -43,7 +43,6 @@ pub async fn payment_processing_worker(
 			};
 
 		let payment_str = if let Some((_key, val)) = popped_value {
-			info!("Payment dequeued: {val:?}");
 			val
 		} else {
 			info!("No payments in queue, waiting...");
@@ -54,36 +53,15 @@ pub async fn payment_processing_worker(
 		let payment: Payment = match serde_json::from_str(&payment_str) {
 			Ok(p) => p,
 			Err(e) => {
-				error!(
+				warn!(
 					"Failed to deserialize payment request from queue: {e}. \
 					 Original string: {payment_str}"
 				);
-				continue; // Skip malformed messages
+				continue;
 			}
 		};
 
-		// Check if correlation_id already processed
-		let is_processed: bool = match con
-			.sismember(
-				PROCESSED_PAYMENTS_SET_KEY,
-				payment.correlation_id.to_string(),
-			)
-			.await
-		{
-			Ok(is_mem) => is_mem,
-			Err(e) => {
-				error!(
-					"Failed to check processed_correlation_ids for {}: {e}",
-					payment.correlation_id
-				);
-				// TODO: Decide how to handle: retry, or process anyway (risk of
-				// duplicate) For now, we'll assume it's not processed to avoid
-				// blocking.
-				false
-			}
-		};
-
-		if is_processed {
+		if is_already_processed(&mut con, &payment).await {
 			info!(
 				"Skipping already processed payment: {}",
 				payment.correlation_id
@@ -91,203 +69,38 @@ pub async fn payment_processing_worker(
 			continue;
 		}
 
-		let default_failing: bool = con
-			.hget(DEFAULT_PROCESSOR_HEALTH_KEY, "failing")
-			.await
-			.unwrap_or(1i32) !=
-			0;
-
-		let fallback_failing: bool = con
-			.hget(FALLBACK_PROCESSOR_HEALTH_KEY, "failing")
-			.await
-			.unwrap_or(1i32) !=
-			0;
-
+		let default_failing =
+			is_backend_failing_or_slow(DEFAULT_PROCESSOR_HEALTH_KEY, &mut con).await;
 		let mut processed = false;
 
-		// Try default first
 		if !default_failing {
-			let req_body = PaymentProcessorRequest {
-				correlation_id: payment.correlation_id,
-				amount:         payment.amount,
-				requested_at:   Utc::now(),
-			};
-			match client
-				.post(format!("{default_url}/payments"))
-				.json(&req_body)
-				.send()
-				.await
-			{
-				Ok(resp) => {
-					if resp.status().is_success() {
-						info!(
-							"Payment {} processed by default processor. Updating \
-							 Redis summary.",
-							payment.correlation_id
-						);
-						match redis::cmd("HINCRBY")
-							.arg("payments_summary_default")
-							.arg("totalRequests")
-							.arg(1)
-							.query_async::<i64>(&mut con)
-							.await
-						{
-							Ok(_) => {
-								info!(
-									"Successfully HINCRBY totalRequests for \
-									 default processor."
-								)
-							}
-							Err(e) => error!(
-								"Failed to HINCRBY totalRequests for default \
-								 processor: {e}"
-							),
-						}
-						match redis::cmd("HINCRBYFLOAT")
-							.arg("payments_summary_default")
-							.arg("totalAmount")
-							.arg(payment.amount)
-							.query_async::<f64>(&mut con)
-							.await
-						{
-							Ok(_) => info!(
-								"Successfully HINCRBYFLOAT totalAmount for default \
-								 processor."
-							),
-							Err(e) => error!(
-								"Failed to HINCRBYFLOAT totalAmount for default \
-								 processor: {e}"
-							),
-						}
-						match con
-							.sadd::<&str, String, ()>(
-								PROCESSED_PAYMENTS_SET_KEY,
-								payment.correlation_id.to_string(),
-							)
-							.await
-						{
-							Ok(_) => info!(
-								"Successfully added {} to \
-								 processed_correlation_ids.",
-								payment.correlation_id
-							),
-							Err(e) => error!(
-								"Failed to add {} to processed_correlation_ids: {e}",
-								payment.correlation_id
-							),
-						}
-						processed = true;
-					} else {
-						error!(
-							"Default processor returned non-success status for {}: \
-							 {}",
-							payment.correlation_id,
-							resp.status()
-						);
-					}
-				}
-				Err(e) => {
-					error!(
-						"Failed to send payment {} to default processor: {e}",
-						payment.correlation_id
-					);
-				}
-			}
+			processed = process_payment(
+				&default_url,
+				DEFAULT_PAYMENT_SUMMARY_KEY,
+				&payment,
+				&client,
+				&mut con,
+			)
+			.await;
 		}
 
-		// If default failed or was failing, try fallback
+		let fallback_failing: bool =
+			is_backend_failing_or_slow(FALLBACK_PROCESSOR_HEALTH_KEY, &mut con)
+				.await;
+
 		if !processed && !fallback_failing {
-			let req_body = PaymentProcessorRequest {
-				correlation_id: payment.correlation_id,
-				amount:         payment.amount,
-				requested_at:   Utc::now(),
-			};
-			match client
-				.post(format!("{fallback_url}/payments"))
-				.json(&req_body)
-				.send()
-				.await
-			{
-				Ok(resp) => {
-					if resp.status().is_success() {
-						info!(
-							"Payment {} processed by fallback processor. Updating \
-							 Redis summary.",
-							payment.correlation_id
-						);
-						match redis::cmd("HINCRBY")
-							.arg("payments_summary_fallback")
-							.arg("totalRequests")
-							.arg(1)
-							.query_async::<i64>(&mut con)
-							.await
-						{
-							Ok(_) => {
-								info!(
-									"Successfully HINCRBY totalRequests for \
-									 fallback processor."
-								)
-							}
-							Err(e) => error!(
-								"Failed to HINCRBY totalRequests for fallback \
-								 processor: {e}"
-							),
-						}
-						match redis::cmd("HINCRBYFLOAT")
-							.arg("payments_summary_fallback")
-							.arg("totalAmount")
-							.arg(payment.amount)
-							.query_async::<f64>(&mut con)
-							.await
-						{
-							Ok(_) => info!(
-								"Successfully HINCRBYFLOAT totalAmount for \
-								 fallback processor."
-							),
-							Err(e) => error!(
-								"Failed to HINCRBYFLOAT totalAmount for fallback \
-								 processor: {e}"
-							),
-						}
-						match con
-							.sadd::<&str, String, ()>(
-								PROCESSED_PAYMENTS_SET_KEY,
-								payment.correlation_id.to_string(),
-							)
-							.await
-						{
-							Ok(_) => info!(
-								"Successfully added {} to \
-								 processed_correlation_ids.",
-								payment.correlation_id
-							),
-							Err(e) => error!(
-								"Failed to add {} to processed_correlation_ids: {e}",
-								payment.correlation_id
-							),
-						}
-						processed = true;
-					} else {
-						error!(
-							"Fallback processor returned non-success status for \
-							 {}: {}",
-							payment.correlation_id,
-							resp.status()
-						);
-					}
-				}
-				Err(e) => {
-					error!(
-						"Failed to send payment {} to fallback processor: {}",
-						payment.correlation_id, e
-					);
-				}
-			}
+			processed = process_payment(
+				&fallback_url,
+				FALLBACK_PAYMENT_SUMMARY_KEY,
+				&payment,
+				&client,
+				&mut con,
+			)
+			.await;
 		}
 
-		// If still not processed, push back to queue or handle as failed
 		if !processed {
-			error!(
+			warn!(
 				"Payment {} could not be processed by any processor. Re-queueing.",
 				payment.correlation_id
 			);
@@ -296,4 +109,99 @@ pub async fn payment_processing_worker(
 				.await;
 		}
 	}
+}
+
+async fn process_payment(
+	processor_url: &String,
+	processor_summary_key: &str,
+	payment: &Payment,
+	client: &Client,
+	con: &mut redis::aio::MultiplexedConnection,
+) -> bool {
+	let payment_request = PaymentProcessorRequest {
+		correlation_id: payment.correlation_id,
+		amount:         payment.amount,
+		requested_at:   Utc::now(),
+	};
+	match client
+		.post(format!("{processor_url}/payments"))
+		.json(&payment_request)
+		.send()
+		.await
+	{
+		Ok(resp) => {
+			if resp.status().is_success() {
+				let _ = record_payment_processed(
+					&payment_request,
+					processor_summary_key,
+					con,
+				)
+				.await;
+				true
+			} else {
+				error!(
+					"Processor returned non-success status for {}: {}",
+					payment.correlation_id,
+					resp.status()
+				);
+				false
+			}
+		}
+		Err(e) => {
+			error!(
+				"Failed to send payment {} to processor: {e}",
+				payment.correlation_id
+			);
+			false
+		}
+	}
+}
+
+async fn record_payment_processed(
+	payment_request: &PaymentProcessorRequest,
+	payment_summary_key: &str,
+	con: &mut redis::aio::MultiplexedConnection,
+) -> RedisResult<i64> {
+	let payment_processed_key =
+		payment_processed_key_of(payment_summary_key, payment_request);
+	return redis::pipe()
+		.hset(&payment_processed_key, "amount", payment_request.amount)
+		.hset(
+			&payment_processed_key,
+			"processed_at",
+			payment_request.requested_at.timestamp(),
+		)
+		.ignore()
+		.cmd("ZADD")
+		.arg(PROCESSED_PAYMENTS_SET_KEY)
+		.arg(payment_request.requested_at.timestamp())
+		.arg(payment_request.correlation_id.to_string())
+		.query_async::<i64>(con)
+		.await;
+}
+
+fn payment_processed_key_of(
+	payment_summary_key: &str,
+	payment_request: &PaymentProcessorRequest,
+) -> String {
+	format!("{payment_summary_key}:{}", payment_request.correlation_id)
+}
+
+async fn is_backend_failing_or_slow(
+	health_key: &str,
+	con: &mut redis::aio::MultiplexedConnection,
+) -> bool {
+	(con.hget(health_key, "failing").await.unwrap_or(1i32)) != 0
+}
+
+async fn is_already_processed(
+	con: &mut redis::aio::MultiplexedConnection,
+	payment: &Payment,
+) -> bool {
+	(con.sismember(
+		PROCESSED_PAYMENTS_SET_KEY,
+		payment.correlation_id.to_string(),
+	)
+	.await)
+		.unwrap_or(false)
 }
