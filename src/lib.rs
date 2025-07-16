@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use actix_web::{App, HttpServer, web};
 use log::info;
 use reqwest::Client;
@@ -50,6 +52,7 @@ pub async fn run() -> std::io::Result<()> {
 					.route(web::get().to(payments_summary)),
 			)
 	})
+	.keep_alive(Duration::from_secs(60))
 	.bind(("0.0.0.0", 9999))?
 	.run()
 	.await
