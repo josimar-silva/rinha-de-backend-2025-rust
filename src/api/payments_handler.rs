@@ -1,28 +1,27 @@
-use actix_web::{HttpResponse, web};
-use log::{error, info};
+use actix_web::{HttpResponse, Responder, ResponseError, post, web};
+use log::info;
 use redis::AsyncCommands;
 
+use super::errors::ApiError;
 use super::schema::PaymentRequest;
+use crate::api::schema::PaymentResponse;
 
+#[post("/payments")]
 pub async fn payments(
-	req: web::Json<PaymentRequest>,
+	payload: web::Json<PaymentRequest>,
 	redis_client: web::Data<redis::Client>,
-) -> HttpResponse {
+) -> impl Responder {
 	let mut con = match redis_client.get_multiplexed_async_connection().await {
 		Ok(con) => con,
-		Err(e) => {
-			error!("Failed to get Redis connection: {e}");
-			return HttpResponse::InternalServerError()
-				.body("Internal Server Error");
+		Err(_e) => {
+			return ApiError::DatabaseConnectionError.error_response();
 		}
 	};
 
-	let payment_json = match serde_json::to_string(&req.0) {
+	let payment_json = match serde_json::to_string(&payload.0) {
 		Ok(json) => json,
-		Err(e) => {
-			error!("Failed to serialize payment request: {e}");
-			return HttpResponse::InternalServerError()
-				.body("Internal Server Error");
+		Err(_e) => {
+			return ApiError::BadClientDataError.error_response();
 		}
 	};
 
@@ -31,12 +30,13 @@ pub async fn payments(
 		.await
 	{
 		Ok(_) => {
-			info!("Payment received and queued: {}", req.correlation_id);
-			HttpResponse::Ok().body("Payment received")
+			info!("Payment received and queued: {}", payload.correlation_id);
+			HttpResponse::Ok().json(PaymentResponse {
+				correlation_id: payload.correlation_id,
+				amount:         payload.amount,
+				status:         "queued".to_string(),
+			})
 		}
-		Err(e) => {
-			error!("Failed to push payment to Redis queue: {e}");
-			HttpResponse::InternalServerError().body("Internal Server Error")
-		}
+		Err(_e) => ApiError::TransactionError.error_response(),
 	}
 }

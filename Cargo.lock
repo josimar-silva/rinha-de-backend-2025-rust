@@ -2057,6 +2057,7 @@ dependencies = [
  "actix-web",
  "anyhow",
  "chrono",
+ "derive_more",
  "env_logger",
  "log",
  "redis",

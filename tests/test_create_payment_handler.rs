@@ -14,7 +14,7 @@ async fn test_payments_post() {
 	let app = test::init_service(
 		App::new()
 			.app_data(web::Data::new(redis_client.clone()))
-			.service(web::resource("/payments").route(web::post().to(payments))),
+			.service(payments),
 	)
 	.await;
 
@@ -55,7 +55,7 @@ async fn test_payments_post_redis_failure() {
 	let app = test::init_service(
 		App::new()
 			.app_data(web::Data::new(redis_client.clone()))
-			.service(web::resource("/payments").route(web::post().to(payments))),
+			.service(payments),
 	)
 	.await;
 

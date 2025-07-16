@@ -7,6 +7,13 @@ pub struct PaymentRequest {
 	pub amount:         f64,
 }
 
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct PaymentResponse {
+	pub correlation_id: Uuid,
+	pub amount:         f64,
+	pub status:         String,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct PaymentsSummaryResponse {
 	pub default:  SummaryData,

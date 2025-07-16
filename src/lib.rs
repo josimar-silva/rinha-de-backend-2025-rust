@@ -46,11 +46,8 @@ pub async fn run() -> std::io::Result<()> {
 	HttpServer::new(move || {
 		App::new()
 			.app_data(web::Data::new(redis_client.clone()))
-			.service(web::resource("/payments").route(web::post().to(payments)))
-			.service(
-				web::resource("/payments-summary")
-					.route(web::get().to(payments_summary)),
-			)
+			.service(payments)
+			.service(payments_summary)
 	})
 	.keep_alive(Duration::from_secs(60))
 	.bind(("0.0.0.0", 9999))?

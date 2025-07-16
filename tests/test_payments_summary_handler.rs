@@ -13,10 +13,7 @@ async fn test_payments_summary_get_empty() {
 	let app = test::init_service(
 		App::new()
 			.app_data(web::Data::new(redis_client.clone()))
-			.service(
-				web::resource("/payments-summary")
-					.route(web::get().to(payments_summary)),
-			),
+			.service(payments_summary),
 	)
 	.await;
 
@@ -63,10 +60,7 @@ async fn test_payments_summary_get_with_data() {
 	let app = test::init_service(
 		App::new()
 			.app_data(web::Data::new(redis_client.clone()))
-			.service(
-				web::resource("/payments-summary")
-					.route(web::get().to(payments_summary)),
-			),
+			.service(payments_summary),
 	)
 	.await;
 
@@ -91,10 +85,7 @@ async fn test_payments_summary_get_redis_failure() {
 	let app = test::init_service(
 		App::new()
 			.app_data(web::Data::new(redis_client.clone()))
-			.service(
-				web::resource("/payments-summary")
-					.route(web::get().to(payments_summary)),
-			),
+			.service(payments_summary),
 	)
 	.await;
 
