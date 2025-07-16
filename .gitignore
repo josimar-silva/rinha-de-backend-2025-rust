@@ -22,3 +22,6 @@ target
 
 # VS Code
 .vscode
+
+# Misc
+lcov.info

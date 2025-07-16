@@ -1,7 +1,15 @@
 [package]
 name = "rinha-de-backend"
 version = "0.1.0-snapshot"
+description = "Rust Submission to Rinha de Backend 3rd edition"
+authors = ["Josimar Silva <me@josimar-silva.com>"]
 edition = "2024"
+rust-version = "1.88.0"
+license = "MIT"
+readme = "./README.md"
+homepage = "https://github.com/josimar-silva/rinha-de-backend-2025"
+repository = "https://github.com/josimar-silva/rinha-de-backend-2025"
+keywords = ["rinha", "backend", "rust"]
 
 [dependencies]
 actix-web = "4"
