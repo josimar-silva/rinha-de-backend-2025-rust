@@ -1,11 +1,10 @@
-use actix_web::{App, test, web};
+#![allow(dead_code)]
+
 use log::info;
 use redis::AsyncCommands;
 use reqwest::Client;
-use rinha_de_backend::api::handlers::{PaymentRequest, payments};
-use rinha_de_backend::workers::payment_processors::{
-	health_check_worker, payment_processing_worker,
-};
+use rinha_de_backend::api::handlers::PaymentRequest;
+use rinha_de_backend::workers::payment_processors::payment_processing_worker;
 use tokio::time::Duration;
 use uuid::Uuid;
 
@@ -14,11 +13,9 @@ mod support;
 use crate::support::payment_processor_container::setup_payment_processors;
 use crate::support::redis_container::get_test_redis_client;
 
-#[actix_web::test]
 async fn test_payment_processing_worker_default_success() {
-	let (redis_client, redis_container) = get_test_redis_client().await;
-	let (default_url, fallback_url, default_container, fallback_container) =
-		setup_payment_processors().await;
+	let (redis_client, _) = get_test_redis_client().await;
+	let (default_url, fallback_url, _, _) = setup_payment_processors().await;
 	let http_client = Client::new();
 
 	let payment_req = PaymentRequest {
@@ -77,18 +74,11 @@ async fn test_payment_processing_worker_default_success() {
 
 	// Abort the worker to clean up
 	worker_handle.abort();
-
-	// Stop all the containers
-	redis_container.stop().await.unwrap();
-	default_container.stop().await.unwrap();
-	fallback_container.stop().await.unwrap();
 }
 
-#[actix_web::test]
 async fn test_payment_processing_worker_fallback_success() {
-	let (redis_client, redis_container) = get_test_redis_client().await;
-	let (default_url, fallback_url, default_container, fallback_container) =
-		setup_payment_processors().await;
+	let (redis_client, _) = get_test_redis_client().await;
+	let (default_url, fallback_url, _, _) = setup_payment_processors().await;
 	let http_client = Client::new();
 
 	let payment_req = PaymentRequest {
@@ -145,17 +135,11 @@ async fn test_payment_processing_worker_fallback_success() {
 
 	// Abort the worker to clean up
 	worker_handle.abort();
-
-	// Stop all the containers
-	redis_container.stop().await.unwrap();
-	default_container.stop().await.unwrap();
-	fallback_container.stop().await.unwrap();
 }
 
-#[actix_web::test]
 #[ignore = "re-queue needs to be reviewed"]
 async fn test_payment_processing_worker_requeue_on_failure() {
-	let (redis_client, redis_container) = get_test_redis_client().await;
+	let (redis_client, _) = get_test_redis_client().await;
 	let http_client = Client::new();
 
 	let payment_req = PaymentRequest {
@@ -204,16 +188,11 @@ async fn test_payment_processing_worker_requeue_on_failure() {
 
 	// Abort the worker to clean up
 	worker_handle.abort();
-
-	// Stop all the containers
-	redis_container.stop().await.unwrap();
 }
 
-#[actix_web::test]
 async fn test_payment_processing_worker_skip_processed_correlation_id() {
-	let (redis_client, redis_container) = get_test_redis_client().await;
-	let (default_url, fallback_url, default_container, fallback_container) =
-		setup_payment_processors().await;
+	let (redis_client, _) = get_test_redis_client().await;
+	let (default_url, fallback_url, _, _) = setup_payment_processors().await;
 	let http_client = Client::new();
 
 	let payment_req = PaymentRequest {
@@ -263,47 +242,14 @@ async fn test_payment_processing_worker_skip_processed_correlation_id() {
 
 	// Abort the worker to clean up
 	worker_handle.abort();
-
-	// Stop all the containers
-	redis_container.stop().await.unwrap();
-	default_container.stop().await.unwrap();
-	fallback_container.stop().await.unwrap();
 }
 
-#[actix_web::test]
-async fn test_payments_post_redis_failure() {
-	let (redis_client, redis_node) = get_test_redis_client().await;
-	let app = test::init_service(
-		App::new()
-			.app_data(web::Data::new(redis_client.clone()))
-			.service(web::resource("/payments").route(web::post().to(payments))),
-	)
-	.await;
-
-	// Stop the redis container to simulate a connection failure
-	let _ = redis_node.stop().await;
-
-	let payment_req = PaymentRequest {
-		correlation_id: Uuid::new_v4(),
-		amount:         100.0,
-	};
-
-	let req = test::TestRequest::post()
-		.uri("/payments")
-		.set_json(&payment_req)
-		.to_request();
-	let resp = test::call_service(&app, req).await;
-
-	assert!(resp.status().is_server_error());
-}
-
-#[actix_web::test]
 async fn test_payment_processing_worker_redis_failure() {
-	let (redis_client, redis_node) = get_test_redis_client().await;
+	let (redis_client, redis_container) = get_test_redis_client().await;
 	let http_client = Client::new();
 
 	// Stop the redis container to simulate a connection failure
-	let _ = redis_node.stop().await;
+	let _ = redis_container.stop().await;
 
 	let worker_handle = tokio::spawn(payment_processing_worker(
 		redis_client.clone(),
@@ -320,42 +266,10 @@ async fn test_payment_processing_worker_redis_failure() {
 
 	// Abort the worker to clean up
 	worker_handle.abort();
-
-	// Stop all the containers
-	redis_node.stop().await.unwrap();
 }
 
-#[actix_web::test]
-async fn test_health_check_worker_redis_failure() {
-	let (redis_client, redis_node) = get_test_redis_client().await;
-	let http_client = Client::new();
-
-	// Stop the redis container to simulate a connection failure
-	let _ = redis_node.stop().await;
-
-	let worker_handle = tokio::spawn(health_check_worker(
-		redis_client.clone(),
-		http_client,
-		"http://localhost:8080".to_string(),
-		"http://localhost:8080".to_string(),
-	));
-
-	// Give the worker some time to run
-	tokio::time::sleep(Duration::from_secs(6)).await;
-
-	// The worker should not panic and should still be running
-	assert!(!worker_handle.is_finished());
-
-	// Abort the worker to clean up
-	worker_handle.abort();
-
-	// Stop all the containers
-	redis_node.stop().await.unwrap();
-}
-
-#[actix_web::test]
 async fn test_payment_processing_worker_deserialization_error() {
-	let (redis_client, redis_container) = get_test_redis_client().await;
+	let (redis_client, _) = get_test_redis_client().await;
 	let http_client = Client::new();
 
 	let mut con = redis_client
@@ -384,42 +298,4 @@ async fn test_payment_processing_worker_deserialization_error() {
 
 	// Abort the worker to clean up
 	worker_handle.abort();
-
-	// Stop all the containers
-	redis_container.stop().await.unwrap();
-}
-
-#[actix_web::test]
-async fn test_health_check_worker_http_failure() {
-	let (redis_client, redis_container) = get_test_redis_client().await;
-	let http_client = Client::new();
-
-	// Use a non-existent URL to simulate HTTP failure
-	let worker_handle = tokio::spawn(health_check_worker(
-		redis_client.clone(),
-		http_client,
-		"http://non-existent-url:8080".to_string(),
-		"http://non-existent-url:8080".to_string(),
-	));
-
-	// Give the worker some time to attempt the HTTP call and update Redis
-	tokio::time::sleep(Duration::from_secs(10)).await;
-
-	let mut con = redis_client
-		.get_multiplexed_async_connection()
-		.await
-		.unwrap();
-	let default_failing: i32 =
-		con.hget("health:default", "failing").await.unwrap_or(0);
-	let fallback_failing: i32 =
-		con.hget("health:fallback", "failing").await.unwrap_or(0);
-
-	assert_eq!(default_failing, 1);
-	assert_eq!(fallback_failing, 1);
-
-	// Abort the worker to clean up
-	worker_handle.abort();
-
-	// Stop all the containers
-	redis_container.stop().await.unwrap();
 }

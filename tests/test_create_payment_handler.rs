@@ -47,3 +47,30 @@ async fn test_payments_post() {
 	);
 	assert_eq!(deserialized_payment.amount, payment_req.amount);
 }
+
+#[actix_web::test]
+async fn test_payments_post_redis_failure() {
+	let (redis_client, redis_node) = get_test_redis_client().await;
+	let app = test::init_service(
+		App::new()
+			.app_data(web::Data::new(redis_client.clone()))
+			.service(web::resource("/payments").route(web::post().to(payments))),
+	)
+	.await;
+
+	// Stop the redis container to simulate a connection failure
+	let _ = redis_node.stop().await;
+
+	let payment_req = PaymentRequest {
+		correlation_id: Uuid::new_v4(),
+		amount:         100.0,
+	};
+
+	let req = test::TestRequest::post()
+		.uri("/payments")
+		.set_json(&payment_req)
+		.to_request();
+	let resp = test::call_service(&app, req).await;
+
+	assert!(resp.status().is_server_error());
+}
