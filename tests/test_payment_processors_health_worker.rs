@@ -1,8 +1,6 @@
-#![allow(dead_code)]
-
 use redis::AsyncCommands;
 use reqwest::Client;
-use rinha_de_backend::workers::payment_processors::health_check_worker;
+use rinha_de_backend::workers::health_check_worker::*;
 use tokio::time::Duration;
 
 mod support;

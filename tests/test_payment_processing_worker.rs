@@ -1,10 +1,8 @@
-#![allow(dead_code)]
-
 use log::info;
 use redis::AsyncCommands;
 use reqwest::Client;
 use rinha_de_backend::api::schema::PaymentRequest;
-use rinha_de_backend::workers::payment_processors::payment_processing_worker;
+use rinha_de_backend::workers::payment_processor_worker::payment_processing_worker;
 use tokio::time::Duration;
 use uuid::Uuid;
 

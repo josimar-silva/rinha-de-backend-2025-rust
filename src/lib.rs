@@ -5,12 +5,12 @@ use log::info;
 use reqwest::Client;
 
 pub mod api;
+pub mod model;
 pub mod workers;
 
 use crate::api::handlers::{payments, payments_summary};
-use crate::workers::payment_processors::{
-	health_check_worker, payment_processing_worker,
-};
+use crate::workers::health_check_worker::*;
+use crate::workers::payment_processor_worker::*;
 
 pub async fn run() -> std::io::Result<()> {
 	env_logger::init();
