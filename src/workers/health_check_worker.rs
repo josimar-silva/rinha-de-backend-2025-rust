@@ -1,11 +1,12 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use log::{error, info};
+use log::error;
 use redis::AsyncCommands;
 use reqwest::Client;
 use tokio::time::sleep;
 
+use crate::config::{DEFAULT_PROCESSOR_HEALTH_KEY, FALLBACK_PROCESSOR_HEALTH_KEY};
 use crate::model::payment_processor::HealthCheckResponse;
 
 pub async fn health_check_worker(
@@ -24,22 +25,32 @@ pub async fn health_check_worker(
 			}
 		};
 
-		update_processor_health("default", &client, &default_url, &mut con).await;
+		update_processor_health(
+			DEFAULT_PROCESSOR_HEALTH_KEY,
+			&client,
+			&default_url,
+			&mut con,
+		)
+		.await;
 
-		update_processor_health("fallback", &client, &fallback_url, &mut con).await;
+		update_processor_health(
+			FALLBACK_PROCESSOR_HEALTH_KEY,
+			&client,
+			&fallback_url,
+			&mut con,
+		)
+		.await;
 
 		sleep(Duration::from_secs(5)).await;
 	}
 }
 
 async fn update_processor_health(
-	processor: &str,
+	processor_health_key: &str,
 	client: &Client,
 	processor_url: &str,
 	con: &mut redis::aio::MultiplexedConnection,
 ) {
-	let processor_health_key = format!("health:{processor}");
-
 	match client
 		.get(format!("{processor_url}/payments/service-health"))
 		.send()
@@ -58,15 +69,11 @@ async fn update_processor_health(
 								),
 							])
 							.await;
-						info!(
-							"{processor} processor health: failing={}, \
-							 min_response_time={}",
-							health.failing, health.min_response_time
-						);
 					}
 					Err(e) => {
 						error!(
-							"Failed to parse {processor} health check response: {e}"
+							"Failed to parse response for {processor_health_key}: \
+							 {e}"
 						);
 						let _: Result<(), _> =
 							con.hset(processor_health_key, "failing", "1").await;
@@ -74,7 +81,7 @@ async fn update_processor_health(
 				}
 			} else {
 				error!(
-					"{processor} processor health check failed with status: {}",
+					"{processor_health_key} check failed with status: {}",
 					resp.status()
 				);
 				let _: Result<(), _> =
@@ -82,7 +89,7 @@ async fn update_processor_health(
 			}
 		}
 		Err(e) => {
-			error!("Failed to reach {processor} payment processor: {e}");
+			error!("Could not reach server of {processor_health_key}: {e}");
 			let _: Result<(), _> =
 				con.hset(processor_health_key, "failing", "1").await;
 		}

@@ -7,6 +7,10 @@ use redis::AsyncCommands;
 use reqwest::Client;
 use tokio::time::sleep;
 
+use crate::config::{
+	DEFAULT_PROCESSOR_HEALTH_KEY, FALLBACK_PROCESSOR_HEALTH_KEY, PAYMENTS_QUEUE_KEY,
+	PROCESSED_PAYMENTS_SET_KEY,
+};
 use crate::model::internal::Payment;
 use crate::model::payment_processor::PaymentProcessorRequest;
 
@@ -29,7 +33,7 @@ pub async fn payment_processing_worker(
 		};
 
 		let popped_value: Option<(String, String)> =
-			match con.brpop("payments_queue", 0.0).await {
+			match con.brpop(PAYMENTS_QUEUE_KEY, 0.0).await {
 				Ok(val) => val,
 				Err(e) => {
 					error!("Failed to pop from payments queue: {e}");
@@ -61,7 +65,7 @@ pub async fn payment_processing_worker(
 		// Check if correlation_id already processed
 		let is_processed: bool = match con
 			.sismember(
-				"processed_correlation_ids",
+				PROCESSED_PAYMENTS_SET_KEY,
 				payment.correlation_id.to_string(),
 			)
 			.await
@@ -87,11 +91,17 @@ pub async fn payment_processing_worker(
 			continue;
 		}
 
-		let default_failing: bool =
-			con.hget("health:default", "failing").await.unwrap_or(1i32) != 0;
+		let default_failing: bool = con
+			.hget(DEFAULT_PROCESSOR_HEALTH_KEY, "failing")
+			.await
+			.unwrap_or(1i32) !=
+			0;
 
-		let fallback_failing: bool =
-			con.hget("health:fallback", "failing").await.unwrap_or(1i32) != 0;
+		let fallback_failing: bool = con
+			.hget(FALLBACK_PROCESSOR_HEALTH_KEY, "failing")
+			.await
+			.unwrap_or(1i32) !=
+			0;
 
 		let mut processed = false;
 
@@ -151,7 +161,7 @@ pub async fn payment_processing_worker(
 						}
 						match con
 							.sadd::<&str, String, ()>(
-								"processed_correlation_ids",
+								PROCESSED_PAYMENTS_SET_KEY,
 								payment.correlation_id.to_string(),
 							)
 							.await
@@ -241,7 +251,7 @@ pub async fn payment_processing_worker(
 						}
 						match con
 							.sadd::<&str, String, ()>(
-								"processed_correlation_ids",
+								PROCESSED_PAYMENTS_SET_KEY,
 								payment.correlation_id.to_string(),
 							)
 							.await
@@ -282,7 +292,7 @@ pub async fn payment_processing_worker(
 				payment.correlation_id
 			);
 			let _: Result<(), _> = con
-				.lpush("payments_queue", serde_json::to_string(&payment).unwrap())
+				.lpush(PAYMENTS_QUEUE_KEY, serde_json::to_string(&payment).unwrap())
 				.await;
 		}
 	}

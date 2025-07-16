@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use actix_web::{App, HttpServer, web};
@@ -5,6 +6,7 @@ use log::info;
 use reqwest::Client;
 
 pub mod api;
+pub mod config;
 pub mod model;
 pub mod workers;
 
@@ -12,17 +14,11 @@ use crate::api::handlers::{payments, payments_summary};
 use crate::workers::health_check_worker::*;
 use crate::workers::payment_processor_worker::*;
 
-pub async fn run() -> std::io::Result<()> {
+pub async fn run(config: Arc<config::Config>) -> std::io::Result<()> {
 	env_logger::init();
 
-	let redis_url = std::env::var("REDIS_URL")
-		.unwrap_or_else(|_| "redis://127.0.0.1/".to_string());
-	let redis_client = redis::Client::open(redis_url).expect("Invalid Redis URL");
-
-	let default_processor_url = std::env::var("PAYMENT_PROCESSOR_URL_DEFAULT")
-		.unwrap_or_else(|_| "http://payment-processor-1/".to_string());
-	let fallback_processor_url = std::env::var("PAYMENT_PROCESSOR_URL_FALLBACK")
-		.unwrap_or_else(|_| "http://payment-processor-2/".to_string());
+	let redis_client =
+		redis::Client::open(config.redis_url.clone()).expect("Invalid Redis URL");
 
 	let http_client = Client::new();
 
@@ -30,16 +26,16 @@ pub async fn run() -> std::io::Result<()> {
 	tokio::spawn(health_check_worker(
 		redis_client.clone(),
 		http_client.clone(),
-		default_processor_url.clone(),
-		fallback_processor_url.clone(),
+		config.default_payment_processor_url.clone(),
+		config.fallback_payment_processor_url.clone(),
 	));
 
 	info!("Starting payment processing worker...");
 	tokio::spawn(payment_processing_worker(
 		redis_client.clone(),
 		http_client.clone(),
-		default_processor_url.clone(),
-		fallback_processor_url.clone(),
+		config.default_payment_processor_url.clone(),
+		config.fallback_payment_processor_url.clone(),
 	));
 
 	info!("Starting Actix-Web server on 0.0.0.0:9999...");
@@ -49,7 +45,7 @@ pub async fn run() -> std::io::Result<()> {
 			.service(payments)
 			.service(payments_summary)
 	})
-	.keep_alive(Duration::from_secs(60))
+	.keep_alive(Duration::from_secs(config.server_keepalive))
 	.bind(("0.0.0.0", 9999))?
 	.run()
 	.await

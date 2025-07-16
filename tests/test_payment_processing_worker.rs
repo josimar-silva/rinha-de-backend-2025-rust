@@ -2,6 +2,10 @@ use log::info;
 use redis::AsyncCommands;
 use reqwest::Client;
 use rinha_de_backend::api::schema::PaymentRequest;
+use rinha_de_backend::config::{
+	DEFAULT_PROCESSOR_HEALTH_KEY, FALLBACK_PROCESSOR_HEALTH_KEY, PAYMENTS_QUEUE_KEY,
+	PROCESSED_PAYMENTS_SET_KEY,
+};
 use rinha_de_backend::workers::payment_processor_worker::payment_processing_worker;
 use tokio::time::Duration;
 use uuid::Uuid;
@@ -29,14 +33,20 @@ async fn test_payment_processing_worker_default_success() {
 	info!("Attempting to push payment to queue.");
 	let _: () = con
 		.lpush(
-			"payments_queue",
+			PAYMENTS_QUEUE_KEY,
 			serde_json::to_string(&payment_req).unwrap(),
 		)
 		.await
 		.unwrap();
 	info!("Payment pushed to queue.");
-	let _: () = con.hset("health:default", "failing", 0).await.unwrap();
-	let _: () = con.hset("health:fallback", "failing", 1).await.unwrap(); // Fallback is failing
+	let _: () = con
+		.hset(DEFAULT_PROCESSOR_HEALTH_KEY, "failing", 0)
+		.await
+		.unwrap();
+	let _: () = con
+		.hset(FALLBACK_PROCESSOR_HEALTH_KEY, "failing", 1)
+		.await
+		.unwrap(); // Fallback is failing
 
 	let worker_handle = tokio::spawn(payment_processing_worker(
 		redis_client.clone(),
@@ -61,7 +71,7 @@ async fn test_payment_processing_worker_default_success() {
 	info!("Attempting to retrieve processed correlation ID from Redis.");
 	let is_processed: bool = con
 		.sismember(
-			"processed_correlation_ids",
+			PROCESSED_PAYMENTS_SET_KEY,
 			payment_req.correlation_id.to_string(),
 		)
 		.await
@@ -93,14 +103,20 @@ async fn test_payment_processing_worker_fallback_success() {
 	info!("Attempting to push payment to queue.");
 	let _: () = con
 		.lpush(
-			"payments_queue",
+			PAYMENTS_QUEUE_KEY,
 			serde_json::to_string(&payment_req).unwrap(),
 		)
 		.await
 		.unwrap();
 	info!("Payment pushed to queue.");
-	let _: () = con.hset("health:default", "failing", 1).await.unwrap(); // Default is failing
-	let _: () = con.hset("health:fallback", "failing", 0).await.unwrap();
+	let _: () = con
+		.hset(DEFAULT_PROCESSOR_HEALTH_KEY, "failing", 1)
+		.await
+		.unwrap(); // Default is failing
+	let _: () = con
+		.hset(FALLBACK_PROCESSOR_HEALTH_KEY, "failing", 0)
+		.await
+		.unwrap();
 
 	let worker_handle = tokio::spawn(payment_processing_worker(
 		redis_client.clone(),
@@ -123,7 +139,7 @@ async fn test_payment_processing_worker_fallback_success() {
 	info!("Attempting to retrieve processed correlation ID from Redis.");
 	let is_processed: bool = con
 		.sismember(
-			"processed_correlation_ids",
+			PROCESSED_PAYMENTS_SET_KEY,
 			payment_req.correlation_id.to_string(),
 		)
 		.await
@@ -155,14 +171,20 @@ async fn test_payment_processing_worker_requeue_on_failure() {
 	info!("Attempting to push payment to queue.");
 	let _: () = con
 		.lpush(
-			"payments_queue",
+			PAYMENTS_QUEUE_KEY,
 			serde_json::to_string(&payment_req).unwrap(),
 		)
 		.await
 		.unwrap();
 	info!("Payment pushed to queue.");
-	let _: () = con.hset("health:default", "failing", 1).await.unwrap(); // Both are failing
-	let _: () = con.hset("health:fallback", "failing", 1).await.unwrap();
+	let _: () = con
+		.hset(DEFAULT_PROCESSOR_HEALTH_KEY, "failing", 1)
+		.await
+		.unwrap(); // Both are failing
+	let _: () = con
+		.hset(FALLBACK_PROCESSOR_HEALTH_KEY, "failing", 1)
+		.await
+		.unwrap();
 
 	let worker_handle = tokio::spawn(payment_processing_worker(
 		redis_client.clone(),
@@ -175,7 +197,7 @@ async fn test_payment_processing_worker_requeue_on_failure() {
 	tokio::time::sleep(Duration::from_secs(5)).await;
 
 	let queued_payment: String = con
-		.rpop::<&str, String>("payments_queue", None)
+		.rpop::<&str, String>(PAYMENTS_QUEUE_KEY, None)
 		.await
 		.unwrap();
 	let deserialized_payment: PaymentRequest =
@@ -209,7 +231,7 @@ async fn test_payment_processing_worker_skip_processed_correlation_id() {
 	info!("Attempting to push payment to queue.");
 	let _: () = con
 		.lpush(
-			"payments_queue",
+			PAYMENTS_QUEUE_KEY,
 			serde_json::to_string(&payment_req).unwrap(),
 		)
 		.await
@@ -217,13 +239,19 @@ async fn test_payment_processing_worker_skip_processed_correlation_id() {
 	info!("Payment pushed to queue.");
 	let _: () = con
 		.sadd(
-			"processed_correlation_ids",
+			PROCESSED_PAYMENTS_SET_KEY,
 			payment_req.correlation_id.to_string(),
 		)
 		.await
 		.unwrap();
-	let _: () = con.hset("health:default", "failing", 0).await.unwrap();
-	let _: () = con.hset("health:fallback", "failing", 1).await.unwrap();
+	let _: () = con
+		.hset(DEFAULT_PROCESSOR_HEALTH_KEY, "failing", 0)
+		.await
+		.unwrap();
+	let _: () = con
+		.hset(FALLBACK_PROCESSOR_HEALTH_KEY, "failing", 1)
+		.await
+		.unwrap();
 
 	let worker_handle = tokio::spawn(payment_processing_worker(
 		redis_client.clone(),
@@ -246,6 +274,7 @@ async fn test_payment_processing_worker_skip_processed_correlation_id() {
 	worker_handle.abort();
 }
 
+#[tokio::test]
 async fn test_payment_processing_worker_redis_failure() {
 	let (redis_client, redis_container) = get_test_redis_client().await;
 	let http_client = Client::new();
@@ -270,6 +299,7 @@ async fn test_payment_processing_worker_redis_failure() {
 	worker_handle.abort();
 }
 
+#[tokio::test]
 async fn test_payment_processing_worker_deserialization_error() {
 	let (redis_client, _) = get_test_redis_client().await;
 	let http_client = Client::new();
@@ -281,7 +311,7 @@ async fn test_payment_processing_worker_deserialization_error() {
 
 	// Push a malformed payment to the queue
 	let _: () = con
-		.lpush("payments_queue", "not a valid json")
+		.lpush(PAYMENTS_QUEUE_KEY, "not a valid json")
 		.await
 		.unwrap();
 

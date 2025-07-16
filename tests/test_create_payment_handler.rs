@@ -2,6 +2,7 @@ use actix_web::{App, test, web};
 use redis::AsyncCommands;
 use rinha_de_backend::api::handlers::payments;
 use rinha_de_backend::api::schema::PaymentRequest;
+use rinha_de_backend::config::PAYMENTS_QUEUE_KEY;
 use uuid::Uuid;
 
 mod support;
@@ -36,7 +37,7 @@ async fn test_payments_post() {
 		.await
 		.unwrap();
 	let queued_payment: String = con
-		.rpop::<&str, String>("payments_queue", None)
+		.rpop::<&str, String>(PAYMENTS_QUEUE_KEY, None)
 		.await
 		.unwrap();
 	let deserialized_payment: PaymentRequest =

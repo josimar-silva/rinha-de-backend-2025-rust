@@ -5,6 +5,7 @@ use redis::AsyncCommands;
 use super::errors::ApiError;
 use super::schema::PaymentRequest;
 use crate::api::schema::PaymentResponse;
+use crate::config::PAYMENTS_QUEUE_KEY;
 
 #[post("/payments")]
 pub async fn payments(
@@ -26,7 +27,7 @@ pub async fn payments(
 	};
 
 	match con
-		.lpush::<&str, String, ()>("payments_queue", payment_json)
+		.lpush::<&str, String, ()>(PAYMENTS_QUEUE_KEY, payment_json)
 		.await
 	{
 		Ok(_) => {

@@ -1,5 +1,8 @@
 use redis::AsyncCommands;
 use reqwest::Client;
+use rinha_de_backend::config::{
+	DEFAULT_PROCESSOR_HEALTH_KEY, FALLBACK_PROCESSOR_HEALTH_KEY,
+};
 use rinha_de_backend::workers::health_check_worker::*;
 use tokio::time::Duration;
 
@@ -30,14 +33,14 @@ async fn test_health_check_worker_success() {
 		.unwrap();
 	let default_failing: i32 = con.hget("health:default", "failing").await.unwrap();
 	let _default_min_response_time: u64 = con
-		.hget("health:default", "min_response_time")
+		.hget(DEFAULT_PROCESSOR_HEALTH_KEY, "min_response_time")
 		.await
 		.unwrap();
 
 	assert_eq!(default_failing, 0);
 
 	let _fallback_min_response_time: u64 = con
-		.hget("health:fallback", "min_response_time")
+		.hget(FALLBACK_PROCESSOR_HEALTH_KEY, "min_response_time")
 		.await
 		.unwrap();
 
@@ -90,10 +93,14 @@ async fn test_health_check_worker_http_failure() {
 		.get_multiplexed_async_connection()
 		.await
 		.unwrap();
-	let default_failing: i32 =
-		con.hget("health:default", "failing").await.unwrap_or(0);
-	let fallback_failing: i32 =
-		con.hget("health:fallback", "failing").await.unwrap_or(0);
+	let default_failing: i32 = con
+		.hget(DEFAULT_PROCESSOR_HEALTH_KEY, "failing")
+		.await
+		.unwrap_or(0);
+	let fallback_failing: i32 = con
+		.hget(FALLBACK_PROCESSOR_HEALTH_KEY, "failing")
+		.await
+		.unwrap_or(0);
 
 	assert_eq!(default_failing, 1);
 	assert_eq!(fallback_failing, 1);

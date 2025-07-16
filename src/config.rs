@@ -1,10 +1,11 @@
 use serde::Deserialize;
-use std::env;
 
 pub const PAYMENTS_QUEUE_KEY: &str = "payments_queue";
 pub const PROCESSED_PAYMENTS_SET_KEY: &str = "processed_payments";
 pub const DEFAULT_PROCESSOR_HEALTH_KEY: &str = "health:default";
 pub const FALLBACK_PROCESSOR_HEALTH_KEY: &str = "health:fallback";
+pub const DEFAULT_PAYMENT_SUMMARY_KEY: &str = "payment_summary:default";
+pub const FALLBACK_PAYMENT_SUMMARY_KEY: &str = "payment_summary:fallback";
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Config {
@@ -26,27 +27,40 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use std::env;
 
-    #[test]
-    fn test_config_load() {
-        // Set environment variables for testing
-        env::set_var("APP_REDIS_URL", "redis://test_redis/");
-        env::set_var("APP_DEFAULT_PAYMENT_PROCESSOR_URL", "http://test_default/");
-        env::set_var("APP_FALLBACK_PAYMENT_PROCESSOR_URL", "http://test_fallback/");
-        env::set_var("APP_SERVER_KEEPALIVE", "120");
+	use super::*;
 
-        let config = Config::load().expect("Failed to load config in test");
+	#[test]
+	fn test_config_load() {
+		unsafe {
+			env::set_var("APP_REDIS_URL", "redis://test_redis/");
+			env::set_var(
+				"APP_DEFAULT_PAYMENT_PROCESSOR_URL",
+				"http://test_default/",
+			);
+			env::set_var(
+				"APP_FALLBACK_PAYMENT_PROCESSOR_URL",
+				"http://test_fallback/",
+			);
+			env::set_var("APP_SERVER_KEEPALIVE", "120");
+		};
 
-        assert_eq!(config.redis_url, "redis://test_redis/");
-        assert_eq!(config.default_payment_processor_url, "http://test_default/");
-        assert_eq!(config.fallback_payment_processor_url, "http://test_fallback/");
-        assert_eq!(config.server_keepalive, 120);
+		let config = Config::load().expect("Failed to load config in test");
 
-        // Clean up environment variables
-        env::remove_var("APP_REDIS_URL");
-        env::remove_var("APP_DEFAULT_PAYMENT_PROCESSOR_URL");
-        env::remove_var("APP_FALLBACK_PAYMENT_PROCESSOR_URL");
-        env::remove_var("APP_SERVER_KEEPALIVE");
-    }
+		assert_eq!(config.redis_url, "redis://test_redis/");
+		assert_eq!(config.default_payment_processor_url, "http://test_default/");
+		assert_eq!(
+			config.fallback_payment_processor_url,
+			"http://test_fallback/"
+		);
+		assert_eq!(config.server_keepalive, 120);
+
+		unsafe {
+			env::remove_var("APP_REDIS_URL");
+			env::remove_var("APP_DEFAULT_PAYMENT_PROCESSOR_URL");
+			env::remove_var("APP_FALLBACK_PAYMENT_PROCESSOR_URL");
+			env::remove_var("APP_SERVER_KEEPALIVE");
+		}
+	}
 }

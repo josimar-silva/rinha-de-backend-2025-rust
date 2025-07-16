@@ -1,4 +1,8 @@
 use redis::AsyncCommands;
+use rinha_de_backend::config::{
+	DEFAULT_PROCESSOR_HEALTH_KEY, FALLBACK_PROCESSOR_HEALTH_KEY, PAYMENTS_QUEUE_KEY,
+	PROCESSED_PAYMENTS_SET_KEY,
+};
 use testcontainers::GenericImage;
 use testcontainers::core::{ContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
@@ -20,7 +24,7 @@ pub async fn get_test_redis_client()
 		.expect("Failed to connect to Redis");
 	// Clear Redis for a clean test environment
 	let _: () = con
-		.del("payments_queue")
+		.del(PAYMENTS_QUEUE_KEY)
 		.await
 		.expect("Failed to clear payments_queue");
 	let _: () = con
@@ -32,15 +36,15 @@ pub async fn get_test_redis_client()
 		.await
 		.expect("Failed to clear payments_summary_fallback");
 	let _: () = con
-		.del("processed_correlation_ids")
+		.del(PROCESSED_PAYMENTS_SET_KEY)
 		.await
 		.expect("Failed to clear processed_correlation_ids");
 	let _: () = con
-		.del("health:default")
+		.del(DEFAULT_PROCESSOR_HEALTH_KEY)
 		.await
 		.expect("Failed to clear health:default");
 	let _: () = con
-		.del("health:fallback")
+		.del(FALLBACK_PROCESSOR_HEALTH_KEY)
 		.await
 		.expect("Failed to clear health:fallback");
 	(client, container)
