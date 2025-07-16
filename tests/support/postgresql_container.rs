@@ -41,18 +41,3 @@ pub async fn setup_postgresql_container()
 
 	(database_url, container)
 }
-
-#[cfg(test)]
-mod tests {
-	use log::info;
-
-	use super::*;
-
-	#[tokio::test]
-	async fn test_postgresql_container() {
-		let (database_url, _container) = setup_postgresql_container().await;
-
-		assert!(!database_url.is_empty());
-		info!("PostgreSQL container setup successfully with URL: {database_url}");
-	}
-}

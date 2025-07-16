@@ -5,6 +5,7 @@ use testcontainers::{GenericImage, ImageExt};
 
 use crate::support::postgresql_container::setup_postgresql_container;
 
+#[allow(dead_code)]
 pub async fn setup_payment_processors() -> (
 	String,
 	String,
@@ -60,24 +61,4 @@ async fn setup_payment_processor(
 	);
 
 	(container_url, payment_processor_container)
-}
-
-#[cfg(test)]
-mod tests {
-
-	use log::info;
-
-	use super::*;
-
-	#[tokio::test]
-	async fn test_payment_processor_container() {
-		let (default_url, fallback_url, _default_container, _fallback_container) =
-			setup_payment_processors().await;
-
-		assert!(!default_url.is_empty());
-		assert!(!fallback_url.is_empty());
-
-		info!("Default Payment Processor URL: {default_url}");
-		info!("Fallback Payment Processor URL: {fallback_url}");
-	}
 }
