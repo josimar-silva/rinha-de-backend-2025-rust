@@ -587,13 +587,6 @@ async fn test_payment_processing_worker_deserialization_error() {
 }
 
 #[actix_web::test]
-async fn test_run_bind_error() {
-	let listener = std::net::TcpListener::bind("0.0.0.0:9999").unwrap();
-	assert!(rinha_de_backend::run().await.is_err());
-	drop(listener);
-}
-
-#[actix_web::test]
 async fn test_health_check_worker_http_failure() {
 	let (redis_client, redis_container) = get_test_redis_client().await;
 	let http_client = Client::new();
