@@ -270,6 +270,7 @@ jobs:
         run: |
           git config user.name "radagastbot[bot]"
           git config user.email "radagastbot[bot]@users.noreply.github.com"
-          git add Cargo.toml Cargo.lock 
+          git add Cargo.toml 
+          git add Cargo.lock 
           git commit -m "chore(release): set next snapshot version"
           git push

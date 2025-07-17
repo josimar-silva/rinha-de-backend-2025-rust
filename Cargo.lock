@@ -2213,7 +2213,7 @@ dependencies = [
 
 [[package]]
 name = "rinha-de-backend"
-version = "0.1.0"
+version = "0.1.1-snapshot"
 dependencies = [
  "actix-web",
  "anyhow",
