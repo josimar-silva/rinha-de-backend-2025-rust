@@ -5,74 +5,83 @@ services:
     image: nginx:latest
     hostname: nginx
     ports:
-      - "9999:80"
+      - "9999:9999"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend-01
+      - backend-02
     networks:
       - backend
       - payment-processor 
     deploy:
       resources:
         limits:
-          cpus: "0.1"
+          cpus: "0.15"
           memory: "20MB"
 
   backend-01:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    # image: josimar-silva/rinha-backend-2025:latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    image: ghcr.io/josimar-silva/rinha-de-backend-2025:latest
     hostname: backend-01
-    ports:
-      - "9999:8080"
+    depends_on:
+      - redis
     networks:
       - backend
       - payment-processor
     environment:
-      - APP_DEFAULT_PAYMENT_PROCESSOR_URL=http://payment-processor-default:8001
-      - APP_FALLBACK_PAYMENT_PROCESSOR_URL=http://payment-processor-fallback:8002
+      - APP_DEFAULT_PAYMENT_PROCESSOR_URL=http://payment-processor-default:8080
+      - APP_FALLBACK_PAYMENT_PROCESSOR_URL=http://payment-processor-fallback:8080
       - APP_REDIS_URL=redis://redis:6379
-      - APP_SERVER_KEEPALIVE=60
+      - APP_SERVER_KEEPALIVE=200
     deploy:
       resources:
         limits:
-          cpus: "0.7"
-          memory: "160MB"
+          cpus: "0.55"
+          memory: "30MB"
 
   backend-02:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    # image: josimar-silva/rinha-backend-2025:latest
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    image: ghcr.io/josimar-silva/rinha-de-backend-2025:latest
     hostname: backend-02
-    ports:
-      - "9999:8081"
+    depends_on:
+      - redis
     networks:
       - backend
       - payment-processor
     environment:
-      - APP_DEFAULT_PAYMENT_PROCESSOR_URL=http://payment-processor-default:8001
-      - APP_FALLBACK_PAYMENT_PROCESSOR_URL=http://payment-processor-fallback:8002
+      - APP_DEFAULT_PAYMENT_PROCESSOR_URL=http://payment-processor-default:8080
+      - APP_FALLBACK_PAYMENT_PROCESSOR_URL=http://payment-processor-fallback:8080
       - APP_REDIS_URL=redis://redis:6379
-      - APP_SERVER_KEEPALIVE=60
+      - APP_SERVER_KEEPALIVE=200
     deploy:
       resources:
         limits:
-          cpus: "0.7"
-          memory: "160MB"
+          cpus: "0.55"
+          memory: "30MB"
 
   redis:
     image: redis:8.0.3-alpine
     hostname: redis
-    networks:
-      - backend
+    command: redis-server --save "" --appendonly no --maxclients 20000
     ports:
       - "6379:6379"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     deploy:
       resources:
         limits:
-          cpus: "0.05"
-          memory: "50MB"
+          cpus: "0.25"
+          memory: "275MB"
 
 networks:
   backend:

@@ -1,0 +1,44 @@
+name: Performance Tests
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Docker Builds"]
+    types: [completed]
+    branches: [main]
+
+jobs:    
+  tests:
+    runs-on: ubuntu-24.04
+   
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Checkout Rinha Repository
+        uses: actions/checkout@v4
+        with:
+          repository: zanfranceschi/rinha-de-backend-2025
+          path: ./rinha
+          submodules: recursive
+      - name: Set up Docker
+        uses: docker-practice/actions-setup-docker@master
+      - name: Setup Payment Processors
+        run: |
+          pushd ./rinha/payment-processor > /dev/null
+            docker compose up --build -d 1> /dev/null 2>&1
+          popd > /dev/null
+      - name: Setup ${{ github.repository_owner }} Backend
+        run: |
+          nohup docker compose up --build >> docker-compose.logs &
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: '0.49.0'
+      - name: Run Performance Tests
+        run: |
+           k6 run rinha/rinha-test/rinha.js
+        env:
+          MAX_REQUESTS: ${{ vars.MAX_REQUESTS }}
+          PARTICIPANT: ${{ github.repository_owner }}
