@@ -1,8 +1,10 @@
 use actix_web::{App, test, web};
-use redis::AsyncCommands;
-use rinha_de_backend::api::handlers::payments;
-use rinha_de_backend::api::schema::PaymentRequest;
-use rinha_de_backend::config::PAYMENTS_QUEUE_KEY;
+use rinha_de_backend::adapters::web::handlers::payments;
+use rinha_de_backend::adapters::web::schema::PaymentRequest;
+use rinha_de_backend::domain::payment::Payment;
+use rinha_de_backend::domain::queue::Queue;
+use rinha_de_backend::infrastructure::queue::redis_payment_queue::PaymentQueue;
+use rinha_de_backend::use_cases::create_payment::CreatePaymentUseCase;
 use uuid::Uuid;
 
 mod support;
@@ -10,19 +12,22 @@ mod support;
 use crate::support::redis_container::get_test_redis_client;
 
 #[actix_web::test]
-async fn test_payments_post() {
+async fn test_payments_post_returns_success() {
 	let redis_container = get_test_redis_client().await;
 	let redis_client = redis_container.client.clone();
+	let payment_queue = PaymentQueue::new(redis_client.clone());
+	let create_payment_use_case = CreatePaymentUseCase::new(payment_queue.clone());
+
 	let app = test::init_service(
 		App::new()
-			.app_data(web::Data::new(redis_client.clone()))
+			.app_data(web::Data::new(create_payment_use_case.clone()))
 			.service(payments),
 	)
 	.await;
 
 	let payment_req = PaymentRequest {
 		correlation_id: Uuid::new_v4(),
-		amount:         100.0,
+		amount:         100.51,
 	};
 
 	let req = test::TestRequest::post()
@@ -33,16 +38,8 @@ async fn test_payments_post() {
 
 	assert!(resp.status().is_success());
 
-	let mut con = redis_client
-		.get_multiplexed_async_connection()
-		.await
-		.unwrap();
-	let queued_payment: String = con
-		.rpop::<&str, String>(PAYMENTS_QUEUE_KEY, None)
-		.await
-		.unwrap();
-	let deserialized_payment: PaymentRequest =
-		serde_json::from_str(&queued_payment).unwrap();
+	let message = payment_queue.pop().await.unwrap().unwrap();
+	let deserialized_payment: Payment = message.body;
 
 	assert_eq!(
 		deserialized_payment.correlation_id,
@@ -55,16 +52,18 @@ async fn test_payments_post() {
 async fn test_payments_post_redis_failure() {
 	let redis_container = get_test_redis_client().await;
 	let redis_client = redis_container.client.clone();
-	let redis_node = redis_container.container;
+	let payment_queue = PaymentQueue::new(redis_client.clone());
+	let create_payment_use_case = CreatePaymentUseCase::new(payment_queue.clone());
+
 	let app = test::init_service(
 		App::new()
-			.app_data(web::Data::new(redis_client.clone()))
+			.app_data(web::Data::new(create_payment_use_case.clone()))
 			.service(payments),
 	)
 	.await;
 
 	// Stop the redis container to simulate a connection failure
-	let _ = redis_node.stop().await;
+	let _ = redis_container.container.stop().await;
 
 	let payment_req = PaymentRequest {
 		correlation_id: Uuid::new_v4(),

@@ -2217,6 +2217,7 @@ version = "0.1.1-snapshot"
 dependencies = [
  "actix-web",
  "anyhow",
+ "async-trait",
  "chrono",
  "config",
  "derive_more",

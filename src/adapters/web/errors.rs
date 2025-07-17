@@ -20,6 +20,8 @@ pub enum ApiError {
 	TransactionError,
 	#[display("Request data is invalid.")]
 	BadClientDataError,
+	#[display("Internal server error.")]
+	InternalServerError,
 }
 
 impl ApiError {
@@ -28,6 +30,7 @@ impl ApiError {
 			ApiError::DatabaseConnectionError => "Insufficient Storage".to_string(),
 			ApiError::TransactionError => "Unprocessable Entity".to_string(),
 			ApiError::BadClientDataError => "Bad request".to_string(),
+			ApiError::InternalServerError => "Internal Server Error".to_string(),
 		}
 	}
 }
@@ -48,7 +51,14 @@ impl error::ResponseError for ApiError {
 			ApiError::DatabaseConnectionError => StatusCode::INSUFFICIENT_STORAGE,
 			ApiError::TransactionError => StatusCode::UNPROCESSABLE_ENTITY,
 			ApiError::BadClientDataError => StatusCode::BAD_REQUEST,
+			ApiError::InternalServerError => StatusCode::INTERNAL_SERVER_ERROR,
 		}
+	}
+}
+
+impl From<Box<dyn std::error::Error>> for ApiError {
+	fn from(_: Box<dyn std::error::Error>) -> Self {
+		ApiError::InternalServerError
 	}
 }
 
