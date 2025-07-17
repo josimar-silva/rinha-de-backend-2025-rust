@@ -221,8 +221,8 @@ jobs:
 
       - name: Create Git Tag
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "radagastbot[bot]"
+          git config user.email "radagastbot[bot]@users.noreply.github.com"
           git tag "v${{ env.RELEASE_VERSION }}"
           git push origin "v${{ env.RELEASE_VERSION }}"
 
@@ -246,7 +246,7 @@ jobs:
           files: artifacts/*/rinha-de-backend-2025-${{ env.RELEASE_VERSION }}-*
           tag_name: v${{ env.RELEASE_VERSION }}
           name: Release v${{ env.RELEASE_VERSION }}
-          body: CHANGELOG.md
+          body_path: CHANGELOG.md
           draft: false
           prerelease: true
 
