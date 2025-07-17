@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use rinha_de_backend::config::Config;
+use rinha_de_backend::infrastructure::config::settings::Config;
 
 #[cfg(test)]
 #[actix_web::test]

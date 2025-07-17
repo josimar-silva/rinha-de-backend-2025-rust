@@ -1,5 +1,5 @@
 use redis::AsyncCommands;
-use rinha_de_backend::config::{
+use rinha_de_backend::infrastructure::config::redis::{
 	DEFAULT_PROCESSOR_HEALTH_KEY, FALLBACK_PROCESSOR_HEALTH_KEY, PAYMENTS_QUEUE_KEY,
 	PROCESSED_PAYMENTS_SET_KEY,
 };

@@ -1,13 +1,16 @@
-use log::info;
-use redis::AsyncCommands;
+use chrono::Days;
+use rinha_de_backend::domain::repository::{PaymentProcessorRepository, PaymentRepository};
+use rinha_de_backend::domain::queue::{Message, Queue};
 use reqwest::Client;
-use rinha_de_backend::api::schema::PaymentRequest;
-use rinha_de_backend::config::{
-	DEFAULT_PAYMENT_SUMMARY_KEY, DEFAULT_PROCESSOR_HEALTH_KEY,
-	FALLBACK_PAYMENT_SUMMARY_KEY, FALLBACK_PROCESSOR_HEALTH_KEY, PAYMENTS_QUEUE_KEY,
-	PROCESSED_PAYMENTS_SET_KEY,
-};
-use rinha_de_backend::workers::payment_processor_worker::payment_processing_worker;
+
+use rinha_de_backend::domain::health_status::HealthStatus;
+use rinha_de_backend::domain::payment::Payment;
+use rinha_de_backend::domain::payment_processor::PaymentProcessor;
+use rinha_de_backend::infrastructure::persistence::redis_payment_processor_repository::RedisPaymentProcessorRepository;
+use rinha_de_backend::infrastructure::persistence::redis_payment_repository::RedisPaymentRepository;
+use rinha_de_backend::infrastructure::queue::redis_payment_queue::PaymentQueue;
+use rinha_de_backend::infrastructure::workers::payment_processor_worker::payment_processing_worker;
+use rinha_de_backend::use_cases::process_payment::ProcessPaymentUseCase;
 use tokio::time::Duration;
 use uuid::Uuid;
 
@@ -26,60 +29,69 @@ async fn test_payment_processing_worker_default_success() {
 	let fallback_url = fallback_processor_container.url.clone();
 	let http_client = Client::new();
 
-	let payment_req = PaymentRequest {
+	let redis_queue = PaymentQueue::new(redis_client.clone());
+	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
+	let processor_repo = RedisPaymentProcessorRepository::new(redis_client.clone());
+	let process_payment_use_case =
+		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+
+	// Set up processor health
+	let default_processor = PaymentProcessor {
+		name:              "default".to_string(),
+		url:               default_url.clone(),
+		health:            HealthStatus::Healthy,
+		min_response_time: 0,
+	};
+	processor_repo.save(default_processor).await.unwrap();
+
+	let fallback_processor = PaymentProcessor {
+		name:              "fallback".to_string(),
+		url:               fallback_url.clone(),
+		health:            HealthStatus::Failing,
+		min_response_time: 0,
+	};
+	processor_repo.save(fallback_processor).await.unwrap();
+
+	let payment_to_process = Payment {
 		correlation_id: Uuid::new_v4(),
 		amount:         250.0,
+		requested_at:   None,
+		processed_at:   None,
+		processed_by:   None,
 	};
 
-	let mut con = redis_client
-		.get_multiplexed_async_connection()
+	// Push payment to queue
+	redis_queue
+		.push(Message {
+			id:   Uuid::new_v4(),
+			body: payment_to_process.clone(),
+		})
 		.await
 		.unwrap();
-	info!("Attempting to push payment to queue.");
-	let _: () = con
-		.lpush(
-			PAYMENTS_QUEUE_KEY,
-			serde_json::to_string(&payment_req).unwrap(),
-		)
-		.await
-		.unwrap();
-	info!("Payment pushed to queue.");
-	let _: () = con
-		.hset(DEFAULT_PROCESSOR_HEALTH_KEY, "failing", 0)
-		.await
-		.unwrap();
-	let _: () = con
-		.hset(FALLBACK_PROCESSOR_HEALTH_KEY, "failing", 1)
-		.await
-		.unwrap(); // Fallback is failing
 
 	let worker_handle = tokio::spawn(payment_processing_worker(
-		redis_client.clone(),
-		http_client,
+		redis_queue.clone(),
+		payment_repo.clone(),
+		processor_repo.clone(),
+		process_payment_use_case.clone(),
 		default_url.clone(),
 		fallback_url.clone(),
 	));
 
 	// Give the worker some time to process the payment
-	tokio::time::sleep(Duration::from_secs(30)).await;
+	tokio::time::sleep(Duration::from_secs(10)).await;
 
-	let processed_key = format!(
-		"{}:{}",
-		DEFAULT_PAYMENT_SUMMARY_KEY, payment_req.correlation_id
-	);
-	let processed_amount: f64 = con.hget(&processed_key, "amount").await.unwrap();
-	let processed_at: i64 = con.hget(&processed_key, "processed_at").await.unwrap();
-
-	let score: i64 = con
-		.zscore(
-			PROCESSED_PAYMENTS_SET_KEY,
-			payment_req.correlation_id.to_string(),
+	let processed_payment = payment_repo
+		.get_payment_summary(
+			"default",
+			&payment_to_process.correlation_id.to_string(),
 		)
 		.await
 		.unwrap();
 
-	assert_eq!(processed_amount, 250.0);
-	assert_eq!(score, processed_at);
+	assert_eq!(processed_payment.amount, 250.0);
+	assert!(processed_payment.processed_by.is_some());
+	assert_eq!(processed_payment.processed_by.unwrap(), "default");
 
 	// Abort the worker to clean up
 	worker_handle.abort();
@@ -94,102 +106,124 @@ async fn test_payment_processing_worker_fallback_success() {
 	let default_url = default_processor_container.url.clone();
 	let fallback_url = fallback_processor_container.url.clone();
 	let http_client = Client::new();
-	let payment_req = PaymentRequest {
+
+	let payment_queue = PaymentQueue::new(redis_client.clone());
+	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
+	let processor_repo = RedisPaymentProcessorRepository::new(redis_client.clone());
+	let process_payment_use_case =
+		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+
+	// Set up processor health
+	let default_processor = PaymentProcessor {
+		name:              "default".to_string(),
+		url:               default_url.clone(),
+		health:            HealthStatus::Failing,
+		min_response_time: 10000,
+	};
+	processor_repo.save(default_processor).await.unwrap();
+
+	let fallback_processor = PaymentProcessor {
+		name:              "fallback".to_string(),
+		url:               fallback_url.clone(),
+		health:            HealthStatus::Healthy,
+		min_response_time: 10,
+	};
+	processor_repo.save(fallback_processor).await.unwrap();
+
+	let payment_to_process = Payment {
 		correlation_id: Uuid::new_v4(),
 		amount:         300.0,
+		requested_at:   None,
+		processed_at:   None,
+		processed_by:   None,
 	};
 
-	let mut con = redis_client
-		.get_multiplexed_async_connection()
-		.await
-		.unwrap();
-	info!("Attempting to push payment to queue.");
-	let _: () = con
-		.lpush(
-			PAYMENTS_QUEUE_KEY,
-			serde_json::to_string(&payment_req).unwrap(),
-		)
-		.await
-		.unwrap();
-	info!("Payment pushed to queue.");
-	let _: () = con
-		.hset(DEFAULT_PROCESSOR_HEALTH_KEY, "failing", 1)
-		.await
-		.unwrap(); // Default is failing
-	let _: () = con
-		.hset(FALLBACK_PROCESSOR_HEALTH_KEY, "failing", 0)
+	payment_queue
+		.push(Message {
+			id:   Uuid::new_v4(),
+			body: payment_to_process.clone(),
+		})
 		.await
 		.unwrap();
 
 	let worker_handle = tokio::spawn(payment_processing_worker(
-		redis_client.clone(),
-		http_client,
+		payment_queue.clone(),
+		payment_repo.clone(),
+		processor_repo.clone(),
+		process_payment_use_case.clone(),
 		default_url.clone(),
 		fallback_url.clone(),
 	));
 
 	// Give the worker some time to process the payment
-	tokio::time::sleep(Duration::from_secs(20)).await;
+	tokio::time::sleep(Duration::from_secs(10)).await;
 
-	let processed_key = format!(
-		"{}:{}",
-		FALLBACK_PAYMENT_SUMMARY_KEY, payment_req.correlation_id
-	);
-	let processed_amount: f64 = con.hget(&processed_key, "amount").await.unwrap();
-	let processed_at: i64 = con.hget(&processed_key, "processed_at").await.unwrap();
-
-	let score: i64 = con
-		.zscore(
-			PROCESSED_PAYMENTS_SET_KEY,
-			payment_req.correlation_id.to_string(),
+	let processed_payment = payment_repo
+		.get_payment_summary(
+			"fallback",
+			&payment_to_process.correlation_id.to_string(),
 		)
 		.await
 		.unwrap();
 
-	assert_eq!(processed_amount, 300.0);
-	assert_eq!(score, processed_at);
+	assert_eq!(processed_payment.amount, 300.0);
+	assert_eq!(processed_payment.processed_by.unwrap(), "fallback");
 
 	// Abort the worker to clean up
 	worker_handle.abort();
 }
 
 #[tokio::test]
-#[ignore = "re-queue needs to be reviewed"]
-async fn test_payment_processing_worker_requeue_on_failure() {
+async fn test_payment_processing_worker_requeue_message_given_processor_are_down() {
 	let redis_container = get_test_redis_client().await;
 	let redis_client = redis_container.client.clone();
 	let http_client = Client::new();
 
-	let payment_req = PaymentRequest {
+	let redis_queue = PaymentQueue::new(redis_client.clone());
+	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
+	let processor_repo = RedisPaymentProcessorRepository::new(redis_client.clone());
+	let process_payment_use_case =
+		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+
+	// Set up processors to be failing
+	let default_processor = PaymentProcessor {
+		name:              "default".to_string(),
+		url:               "http://non-existent-url:8080".to_string(),
+		health:            HealthStatus::Failing,
+		min_response_time: 0,
+	};
+	processor_repo.save(default_processor).await.unwrap();
+
+	let fallback_processor = PaymentProcessor {
+		name:              "fallback".to_string(),
+		url:               "http://non-existent-url:8080".to_string(),
+		health:            HealthStatus::Failing,
+		min_response_time: 0,
+	};
+	processor_repo.save(fallback_processor).await.unwrap();
+
+	let payment_to_process = Payment {
 		correlation_id: Uuid::new_v4(),
 		amount:         400.0,
+		requested_at:   None,
+		processed_at:   None,
+		processed_by:   None,
 	};
 
-	let mut con = redis_client
-		.get_multiplexed_async_connection()
-		.await
-		.unwrap();
-	info!("Attempting to push payment to queue.");
-	let _: () = con
-		.lpush(
-			PAYMENTS_QUEUE_KEY,
-			serde_json::to_string(&payment_req).unwrap(),
-		)
-		.await
-		.unwrap();
-	info!("Payment pushed to queue.");
-	let _: () = con
-		.hset(DEFAULT_PROCESSOR_HEALTH_KEY, "failing", 1)
-		.await
-		.unwrap(); // Both are failing
-	let _: () = con
-		.hset(FALLBACK_PROCESSOR_HEALTH_KEY, "failing", 1)
+	// Push payment to queue
+	redis_queue
+		.push(Message::with(
+			payment_to_process.correlation_id,
+			payment_to_process.clone(),
+		))
 		.await
 		.unwrap();
 
 	let worker_handle = tokio::spawn(payment_processing_worker(
-		redis_client.clone(),
-		http_client,
+		redis_queue.clone(),
+		payment_repo.clone(),
+		processor_repo.clone(),
+		process_payment_use_case.clone(),
 		"http://non-existent-url:8080".to_string(),
 		"http://non-existent-url:8080".to_string(),
 	));
@@ -197,25 +231,22 @@ async fn test_payment_processing_worker_requeue_on_failure() {
 	// Give the worker some time to attempt processing and re-queue
 	tokio::time::sleep(Duration::from_secs(5)).await;
 
-	let queued_payment: String = con
-		.rpop::<&str, String>(PAYMENTS_QUEUE_KEY, None)
-		.await
-		.unwrap();
-	let deserialized_payment: PaymentRequest =
-		serde_json::from_str(&queued_payment).unwrap();
+	// Verify payment is re-queued
+	let message = redis_queue.pop().await.unwrap().unwrap();
+	let deserialized_payment: Payment = message.body;
 
 	assert_eq!(
 		deserialized_payment.correlation_id,
-		payment_req.correlation_id
+		payment_to_process.correlation_id
 	);
-	assert_eq!(deserialized_payment.amount, payment_req.amount);
+	assert_eq!(deserialized_payment.amount, payment_to_process.amount);
 
 	// Abort the worker to clean up
 	worker_handle.abort();
 }
 
 #[tokio::test]
-async fn test_payment_processing_worker_skip_processed_correlation_id() {
+async fn test_payment_processing_worker_skip_processed_message() {
 	let redis_container = get_test_redis_client().await;
 	let redis_client = redis_container.client.clone();
 	let (default_processor_container, fallback_processor_container) =
@@ -224,58 +255,77 @@ async fn test_payment_processing_worker_skip_processed_correlation_id() {
 	let fallback_url = fallback_processor_container.url.clone();
 	let http_client = Client::new();
 
-	let payment_req = PaymentRequest {
+	let redis_queue = PaymentQueue::new(redis_client.clone());
+	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
+	let processor_repo = RedisPaymentProcessorRepository::new(redis_client.clone());
+	let process_payment_use_case =
+		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+
+	// Set up processor health
+	let default_processor = PaymentProcessor {
+		name:              "default".to_string(),
+		url:               default_url.clone(),
+		health:            HealthStatus::Healthy,
+		min_response_time: 0,
+	};
+	processor_repo.save(default_processor).await.unwrap();
+
+	let fallback_processor = PaymentProcessor {
+		name:              "fallback".to_string(),
+		url:               fallback_url.clone(),
+		health:            HealthStatus::Failing,
+		min_response_time: 0,
+	};
+	processor_repo.save(fallback_processor).await.unwrap();
+
+	let payment_to_process = Payment {
 		correlation_id: Uuid::new_v4(),
 		amount:         500.0,
+		requested_at:   None,
+		processed_at:   None,
+		processed_by:   None,
 	};
 
-	let mut con = redis_client
-		.get_multiplexed_async_connection()
-		.await
-		.unwrap();
-	info!("Attempting to push payment to queue.");
-	let _: () = con
-		.lpush(
-			PAYMENTS_QUEUE_KEY,
-			serde_json::to_string(&payment_req).unwrap(),
-		)
-		.await
-		.unwrap();
-	info!("Payment pushed to queue.");
-	let _: () = con
-		.sadd(
-			PROCESSED_PAYMENTS_SET_KEY,
-			payment_req.correlation_id.to_string(),
-		)
-		.await
-		.unwrap();
-	let _: () = con
-		.hset(DEFAULT_PROCESSOR_HEALTH_KEY, "failing", 0)
-		.await
-		.unwrap();
-	let _: () = con
-		.hset(FALLBACK_PROCESSOR_HEALTH_KEY, "failing", 1)
+	// Pre-process the payment to simulate it being already processed
+	let pre_processed_payment = Payment {
+		correlation_id: payment_to_process.correlation_id,
+		amount:         payment_to_process.amount,
+		requested_at:   Some(chrono::Utc::now()),
+		processed_at:   Some(chrono::Utc::now()),
+		processed_by:   Some("default".to_string()),
+	};
+	payment_repo.save(pre_processed_payment).await.unwrap();
+
+	// Push payment to queue (it should be skipped by the worker)
+	redis_queue
+		.push(Message::with(
+			payment_to_process.correlation_id,
+			payment_to_process.clone(),
+		))
 		.await
 		.unwrap();
 
 	let worker_handle = tokio::spawn(payment_processing_worker(
-		redis_client.clone(),
-		http_client,
+		redis_queue.clone(),
+		payment_repo.clone(),
+		processor_repo.clone(),
+		process_payment_use_case.clone(),
 		default_url.clone(),
 		fallback_url.clone(),
 	));
 
 	// Give the worker some time to process
-	tokio::time::sleep(Duration::from_secs(20)).await;
+	tokio::time::sleep(Duration::from_secs(5)).await;
 
-	let processed_key = format!(
-		"{}:{}",
-		DEFAULT_PAYMENT_SUMMARY_KEY, payment_req.correlation_id
-	);
-	let processed_amount: Option<f64> =
-		con.hget(&processed_key, "amount").await.unwrap();
+	let now = chrono::Utc::now();
+	let one_day_ago = now.checked_sub_days(Days::new(1)).unwrap();
+	let (processed_payments, processed_amount) = payment_repo
+		.get_summary_by_group("default", one_day_ago.timestamp(), now.timestamp())
+		.await
+		.unwrap();
 
-	assert!(processed_amount.is_none());
+	assert_eq!(processed_payments, 1);
+	assert_eq!(processed_amount, 500.0);
 
 	// Abort the worker to clean up
 	worker_handle.abort();
@@ -288,46 +338,20 @@ async fn test_payment_processing_worker_redis_failure() {
 	let redis_container_instance = redis_container.container;
 	let http_client = Client::new();
 
+	let redis_queue = PaymentQueue::new(redis_client.clone());
+	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
+	let processor_repo = RedisPaymentProcessorRepository::new(redis_client.clone());
+	let process_payment_use_case =
+		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+
 	// Stop the redis container to simulate a connection failure
 	let _ = redis_container_instance.stop().await;
 
 	let worker_handle = tokio::spawn(payment_processing_worker(
-		redis_client.clone(),
-		http_client,
-		"http://localhost:8080".to_string(),
-		"http://localhost:8080".to_string(),
-	));
-
-	// Give the worker some time to run
-	tokio::time::sleep(Duration::from_secs(6)).await;
-
-	// The worker should not panic and should still be running
-	assert!(!worker_handle.is_finished());
-
-	// Abort the worker to clean up
-	worker_handle.abort();
-}
-
-#[tokio::test]
-async fn test_payment_processing_worker_deserialization_error() {
-	let redis_container = get_test_redis_client().await;
-	let redis_client = redis_container.client.clone();
-	let http_client = Client::new();
-
-	let mut con = redis_client
-		.get_multiplexed_async_connection()
-		.await
-		.unwrap();
-
-	// Push a malformed payment to the queue
-	let _: () = con
-		.lpush(PAYMENTS_QUEUE_KEY, "not a valid json")
-		.await
-		.unwrap();
-
-	let worker_handle = tokio::spawn(payment_processing_worker(
-		redis_client.clone(),
-		http_client,
+		redis_queue,
+		payment_repo,
+		processor_repo,
+		process_payment_use_case,
 		"http://localhost:8080".to_string(),
 		"http://localhost:8080".to_string(),
 	));
