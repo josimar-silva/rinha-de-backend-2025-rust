@@ -1,5 +1,5 @@
 test:
-	TESTCONTAINERS_COMMAND=keep cargo tarpaulin --out Lcov --all-features && just clean-containers
+	cargo tarpaulin --out Lcov --all-features
 
 format:
 	cargo fmt --all

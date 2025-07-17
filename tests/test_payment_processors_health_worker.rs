@@ -13,8 +13,12 @@ use crate::support::redis_container::get_test_redis_client;
 
 #[tokio::test]
 async fn test_health_check_worker_success() {
-	let (redis_client, _) = get_test_redis_client().await;
-	let (default_url, fallback_url, _, _) = setup_payment_processors().await;
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
+	let (default_processor_container, fallback_processor_container) =
+		setup_payment_processors().await;
+	let default_url = default_processor_container.url.clone();
+	let fallback_url = fallback_processor_container.url.clone();
 	let http_client = Client::new();
 
 	let worker_handle = tokio::spawn(health_check_worker(
@@ -50,7 +54,9 @@ async fn test_health_check_worker_success() {
 
 #[tokio::test]
 async fn test_health_check_worker_redis_failure() {
-	let (redis_client, redis_node) = get_test_redis_client().await;
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
+	let redis_node = redis_container.container;
 	let http_client = Client::new();
 
 	// Stop the redis container to simulate a connection failure
@@ -75,7 +81,8 @@ async fn test_health_check_worker_redis_failure() {
 
 #[tokio::test]
 async fn test_health_check_worker_http_failure() {
-	let (redis_client, _) = get_test_redis_client().await;
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
 	let http_client = Client::new();
 
 	// Use a non-existent URL to simulate HTTP failure

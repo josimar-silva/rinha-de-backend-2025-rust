@@ -18,8 +18,12 @@ use crate::support::redis_container::get_test_redis_client;
 
 #[tokio::test]
 async fn test_payment_processing_worker_default_success() {
-	let (redis_client, _) = get_test_redis_client().await;
-	let (default_url, fallback_url, _, _) = setup_payment_processors().await;
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
+	let (default_processor_container, fallback_processor_container) =
+		setup_payment_processors().await;
+	let default_url = default_processor_container.url.clone();
+	let fallback_url = fallback_processor_container.url.clone();
 	let http_client = Client::new();
 
 	let payment_req = PaymentRequest {
@@ -83,8 +87,12 @@ async fn test_payment_processing_worker_default_success() {
 
 #[tokio::test]
 async fn test_payment_processing_worker_fallback_success() {
-	let (redis_client, _) = get_test_redis_client().await;
-	let (default_url, fallback_url, _, _) = setup_payment_processors().await;
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
+	let (default_processor_container, fallback_processor_container) =
+		setup_payment_processors().await;
+	let default_url = default_processor_container.url.clone();
+	let fallback_url = fallback_processor_container.url.clone();
 	let http_client = Client::new();
 	let payment_req = PaymentRequest {
 		correlation_id: Uuid::new_v4(),
@@ -148,7 +156,8 @@ async fn test_payment_processing_worker_fallback_success() {
 #[tokio::test]
 #[ignore = "re-queue needs to be reviewed"]
 async fn test_payment_processing_worker_requeue_on_failure() {
-	let (redis_client, _) = get_test_redis_client().await;
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
 	let http_client = Client::new();
 
 	let payment_req = PaymentRequest {
@@ -207,8 +216,12 @@ async fn test_payment_processing_worker_requeue_on_failure() {
 
 #[tokio::test]
 async fn test_payment_processing_worker_skip_processed_correlation_id() {
-	let (redis_client, _) = get_test_redis_client().await;
-	let (default_url, fallback_url, _, _) = setup_payment_processors().await;
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
+	let (default_processor_container, fallback_processor_container) =
+		setup_payment_processors().await;
+	let default_url = default_processor_container.url.clone();
+	let fallback_url = fallback_processor_container.url.clone();
 	let http_client = Client::new();
 
 	let payment_req = PaymentRequest {
@@ -270,11 +283,13 @@ async fn test_payment_processing_worker_skip_processed_correlation_id() {
 
 #[tokio::test]
 async fn test_payment_processing_worker_redis_failure() {
-	let (redis_client, redis_container) = get_test_redis_client().await;
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
+	let redis_container_instance = redis_container.container;
 	let http_client = Client::new();
 
 	// Stop the redis container to simulate a connection failure
-	let _ = redis_container.stop().await;
+	let _ = redis_container_instance.stop().await;
 
 	let worker_handle = tokio::spawn(payment_processing_worker(
 		redis_client.clone(),
@@ -295,7 +310,8 @@ async fn test_payment_processing_worker_redis_failure() {
 
 #[tokio::test]
 async fn test_payment_processing_worker_deserialization_error() {
-	let (redis_client, _) = get_test_redis_client().await;
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
 	let http_client = Client::new();
 
 	let mut con = redis_client

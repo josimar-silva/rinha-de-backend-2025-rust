@@ -3,46 +3,39 @@ use testcontainers::core::{ContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{GenericImage, ImageExt};
 
-use crate::support::postgresql_container::setup_postgresql_container;
+use crate::support::postgresql_container::{
+	PostgresTestContainer, setup_postgresql_container,
+};
 
-pub async fn setup_payment_processors() -> (
-	String,
-	String,
-	testcontainers::ContainerAsync<GenericImage>,
-	testcontainers::ContainerAsync<GenericImage>,
-) {
-	let (default_database_url, _database_container) =
-		setup_postgresql_container().await;
+pub async fn setup_payment_processors()
+-> (PaymentProcessorTestContainer, PaymentProcessorTestContainer) {
+	let default_processor_container = setup_payment_processor(0.05, 5).await;
 
-	let (default_url, default_processor_container) =
-		setup_payment_processor(0.05, 5, default_database_url.clone()).await;
+	let fallback_processor_container = setup_payment_processor(0.15, 5).await;
 
-	let (fallback_database_url, _database_container) =
-		setup_postgresql_container().await;
+	(default_processor_container, fallback_processor_container)
+}
 
-	let (fallback_url, fallback_processor_container) =
-		setup_payment_processor(0.15, 5, fallback_database_url).await;
-
-	(
-		default_url,
-		fallback_url,
-		default_processor_container,
-		fallback_processor_container,
-	)
+pub struct PaymentProcessorTestContainer {
+	pub url:       String,
+	pub container: testcontainers::ContainerAsync<GenericImage>,
+	pub database:  PostgresTestContainer,
 }
 
 async fn setup_payment_processor(
 	transaction_fee: f64,
 	rate_limit: i8,
-	database_url: String,
-) -> (String, testcontainers::ContainerAsync<GenericImage>) {
+) -> PaymentProcessorTestContainer {
+	let database_container = setup_postgresql_container().await;
+	let database_url = database_container.database_url.clone();
+
 	let payment_processor_container =
 		GenericImage::new("zanfranceschi/payment-processor", "amd64-20250707101540")
 			.with_wait_for(WaitFor::http(
 				HttpWaitStrategy::new("/").with_expected_status_code(200_u16),
 			))
 			.with_exposed_port(ContainerPort::Tcp(8080))
-			.with_network("test-network") // Use a named network
+			.with_network("test-network")
 			.with_env_var("DB_CONNECTION_STRING", database_url)
 			.with_env_var("TRANSACTION_FEE", transaction_fee.to_string())
 			.with_env_var("RATE_LIMIT_SECONDS", rate_limit.to_string())
@@ -59,5 +52,9 @@ async fn setup_payment_processor(
 		container_port.unwrap()
 	);
 
-	(container_url, payment_processor_container)
+	PaymentProcessorTestContainer {
+		url:       container_url,
+		container: payment_processor_container,
+		database:  database_container,
+	}
 }

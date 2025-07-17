@@ -11,7 +11,8 @@ use crate::support::redis_container::get_test_redis_client;
 
 #[actix_web::test]
 async fn test_payments_post() {
-	let (redis_client, _redis_container) = get_test_redis_client().await;
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
 	let app = test::init_service(
 		App::new()
 			.app_data(web::Data::new(redis_client.clone()))
@@ -52,7 +53,9 @@ async fn test_payments_post() {
 
 #[actix_web::test]
 async fn test_payments_post_redis_failure() {
-	let (redis_client, redis_node) = get_test_redis_client().await;
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
+	let redis_node = redis_container.container;
 	let app = test::init_service(
 		App::new()
 			.app_data(web::Data::new(redis_client.clone()))

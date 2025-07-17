@@ -106,7 +106,6 @@ jobs:
             -- --skip "repo::test::git_upstream_remote"
         env:
           RUST_LOG: info
-          TESTCONTAINERS_COMMAND: keep 
 
       - name: Generate clippy report
         run: |

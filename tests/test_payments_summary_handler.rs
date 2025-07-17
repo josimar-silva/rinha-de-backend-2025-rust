@@ -9,7 +9,8 @@ use crate::support::redis_container::get_test_redis_client;
 
 #[actix_web::test]
 async fn test_payments_summary_get_empty() {
-	let (redis_client, _) = get_test_redis_client().await;
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
 	let app = test::init_service(
 		App::new()
 			.app_data(web::Data::new(redis_client.clone()))
@@ -34,7 +35,8 @@ async fn test_payments_summary_get_empty() {
 
 #[actix_web::test]
 async fn test_payments_summary_get_with_data() {
-	let (redis_client, _) = get_test_redis_client().await;
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
 	let mut con = redis_client
 		.get_multiplexed_async_connection()
 		.await
@@ -86,7 +88,8 @@ async fn test_payments_summary_get_with_data() {
 
 #[actix_web::test]
 async fn test_payments_summary_get_redis_failure() {
-	let (redis_client, redis_container) = get_test_redis_client().await;
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
 	let app = test::init_service(
 		App::new()
 			.app_data(web::Data::new(redis_client.clone()))
@@ -95,7 +98,7 @@ async fn test_payments_summary_get_redis_failure() {
 	.await;
 
 	// Stop the redis container to simulate a connection failure
-	let _ = redis_container.stop().await;
+	let _ = redis_container.container.stop().await;
 
 	let req = test::TestRequest::get()
 		.uri("/payments-summary")
@@ -107,7 +110,8 @@ async fn test_payments_summary_get_redis_failure() {
 
 #[actix_web::test]
 async fn test_payments_summary_get_with_filter() {
-	let (redis_client, _) = get_test_redis_client().await;
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
 	let mut con = redis_client
 		.get_multiplexed_async_connection()
 		.await

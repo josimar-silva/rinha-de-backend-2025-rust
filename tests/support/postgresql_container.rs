@@ -4,8 +4,12 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers::{GenericImage, ImageExt};
 use uuid::Uuid;
 
-pub async fn setup_postgresql_container()
--> (String, testcontainers::ContainerAsync<GenericImage>) {
+pub struct PostgresTestContainer {
+	pub database_url: String,
+	pub container:    testcontainers::ContainerAsync<GenericImage>,
+}
+
+pub async fn setup_postgresql_container() -> PostgresTestContainer {
 	let database_name = "payment_processor";
 	let database_user = "payment-processor-user";
 	let database_password = "payment-processor-user";
@@ -39,5 +43,8 @@ pub async fn setup_postgresql_container()
 
 	info!("Postgres Container running at {database_url}");
 
-	(database_url, container)
+	PostgresTestContainer {
+		database_url,
+		container,
+	}
 }

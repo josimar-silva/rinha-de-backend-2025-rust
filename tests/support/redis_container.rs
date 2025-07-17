@@ -7,8 +7,18 @@ use testcontainers::GenericImage;
 use testcontainers::core::{ContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
 
-pub async fn get_test_redis_client()
--> (redis::Client, testcontainers::ContainerAsync<GenericImage>) {
+pub struct RedisTestContainer {
+	pub client:    redis::Client,
+	pub container: testcontainers::ContainerAsync<GenericImage>,
+}
+
+impl RedisTestContainer {
+	pub fn client(&self) -> &redis::Client {
+		&self.client
+	}
+}
+
+pub async fn get_test_redis_client() -> RedisTestContainer {
 	let container = GenericImage::new("redis", "8.0.3-alpine")
 		.with_exposed_port(ContainerPort::Tcp(6379))
 		.with_wait_for(WaitFor::message_on_stdout("Ready to accept connections"))
@@ -47,5 +57,5 @@ pub async fn get_test_redis_client()
 		.del(FALLBACK_PROCESSOR_HEALTH_KEY)
 		.await
 		.expect("Failed to clear health:fallback");
-	(client, container)
+	RedisTestContainer { client, container }
 }
