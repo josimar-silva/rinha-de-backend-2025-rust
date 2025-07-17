@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -26,4 +27,12 @@ pub struct SummaryData {
 	pub total_requests: i64,
 	#[serde(rename = "totalAmount")]
 	pub total_amount:   f64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct PaymentsSummaryFilter {
+	#[serde(with = "chrono::serde::ts_seconds_option", default)]
+	pub from: Option<DateTime<Utc>>,
+	#[serde(with = "chrono::serde::ts_seconds_option", default)]
+	pub to:   Option<DateTime<Utc>>,
 }
