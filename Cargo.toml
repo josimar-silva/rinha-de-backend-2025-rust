@@ -39,3 +39,8 @@ chrono = { version = "0.4.31", features = ["serde"] }
 env_logger = "0.11"
 testcontainers = { version = "0.24.0", features = ["http_wait"] }
 rinha-de-backend = { path = "." , version = "0.1.1-snapshot" }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"

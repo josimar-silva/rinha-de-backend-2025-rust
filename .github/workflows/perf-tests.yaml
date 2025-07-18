@@ -36,9 +36,43 @@ jobs:
         uses: grafana/setup-k6-action@v1
         with:
           k6-version: '0.49.0'
+
       - name: Run Performance Tests
         run: |
-           k6 run rinha/rinha-test/rinha.js
+           k6 run --out json=k6_results.json rinha/rinha-test/rinha.js
         env:
           MAX_REQUESTS: ${{ vars.MAX_REQUESTS }}
           PARTICIPANT: ${{ github.repository_owner }}
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Process Performance Results
+        run: |
+          COMMIT_SHA="${{ github.sha }}"
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # Extract k6 metrics (adjust these based on what metrics you care about)
+          ITERATIONS=$(jq -r '.metrics.iterations.values.count' k6_results.json)
+          AVG_REQ_DURATION=$(jq -r '.metrics.http_req_duration.values.avg' k6_results.json)
+          P95_REQ_DURATION=$(jq -r '.metrics.http_req_duration.values."p(95)"' k6_results.json)
+          P99_REQ_DURATION=$(jq -r '.metrics.http_req_duration.values."p(99)"' k6_results.json)
+          HTTP_FAIL_RATE=$(jq -r '.metrics.http_req_failed.values.rate' k6_results.json)
+
+          # Create or append to perf.md
+          PERF_FILE="perf.md"
+          if [ ! -f "$PERF_FILE" ]; then
+            echo "# Performance Test Results" > "$PERF_FILE"
+            echo "" >> "$PERF_FILE"
+            echo "| Commit SHA | Timestamp | Iterations | Avg Req Duration (ms) | P95 Req Duration (ms) | P99 Req Duration (ms) | HTTP Fail Rate |" >> "$PERF_FILE"
+            echo "|------------|-----------|------------|-----------------------|-----------------------|-----------------------|----------------|" >> "$PERF_FILE"
+          fi
+
+          echo "| ${COMMIT_SHA::7} | ${TIMESTAMP} | ${ITERATIONS} | ${AVG_REQ_DURATION} | ${P95_REQ_DURATION} | ${P99_REQ_DURATION} | ${HTTP_FAIL_RATE} |" >> "$PERF_FILE"
+
+      - name: Commit Perfomance Results
+        run: |
+          git config user.name "radagastbot[bot]"
+          git config user.email "radagastbot[bot]@users.noreply.github.com"
+          git add "$PERF_FILE"
+          git commit -m "docs: Update performance test results for ${COMMIT_SHA::7}"
+          git push

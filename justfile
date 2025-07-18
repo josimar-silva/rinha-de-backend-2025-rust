@@ -1,11 +1,11 @@
 test:
-	cargo tarpaulin --out Lcov --all-features
+	CARGO_TARGET_DIR=./target RUSTFLAGS="-C target-cpu=native" cargo tarpaulin --out Lcov --all-features
 
 format:
-	cargo fmt --all
+	CARGO_TARGET_DIR=./target RUSTFLAGS="-C target-cpu=native" cargo fmt --all
 
 lint:
-	cargo clippy --all-targets -- -D warnings
+	CARGO_TARGET_DIR=./target RUSTFLAGS="-C target-cpu=native" cargo clippy --all-targets -- -D warnings
 
 clean-containers:
 	docker rm -f $(docker ps -aq)
