@@ -31,11 +31,20 @@ jobs:
           popd > /dev/null
       - name: Setup ${{ github.repository_owner }} Backend
         run: |
-          nohup docker compose up --build >> docker-compose.logs &
+          docker compose up --build -d
+      - name: Get Backend Container ID
+        id: get_container_id
+        run: |
+          echo "container_id=$(docker ps -aqf "name=backend-01")" >> $GITHUB_OUTPUT
+      - name: Start Perf Recording
+        run: |
+          docker exec -d ${{ steps.get_container_id.outputs.container_id }} perf record -F 99 -a -g --pid 1 --output /perf.data
       - name: Setup k6
         uses: grafana/setup-k6-action@v1
         with:
           k6-version: '0.49.0'
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Run Performance Tests
         run: |
@@ -43,6 +52,15 @@ jobs:
         env:
           MAX_REQUESTS: ${{ vars.MAX_REQUESTS }}
           PARTICIPANT: ${{ github.repository_owner }}
+      - name: Stop Perf Recording and Copy Data
+        run: |
+          docker exec ${{ steps.get_container_id.outputs.container_id }} pkill -SIGINT perf
+          docker cp ${{ steps.get_container_id.outputs.container_id }}:/perf.data ./perf.data
+      - name: Upload Perf Data Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-data
+          path: perf.data
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq

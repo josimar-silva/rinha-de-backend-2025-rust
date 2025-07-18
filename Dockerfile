@@ -31,3 +31,4 @@ COPY --from=builder /app/target/release/rinha-de-backend .
 EXPOSE 9999
 
 CMD ["./rinha-de-backend"]
+
