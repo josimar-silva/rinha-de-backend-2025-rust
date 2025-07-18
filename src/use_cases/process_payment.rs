@@ -25,6 +25,8 @@ impl<R: PaymentRepository> ProcessPaymentUseCase<R> {
 		processor_url: String,
 		processed_by: String,
 	) -> Result<bool, Box<dyn std::error::Error + Send>> {
+		payment.requested_at = Some(Utc::now());
+
 		match self
 			.http_client
 			.post(format!("{processor_url}/payments"))
@@ -34,7 +36,6 @@ impl<R: PaymentRepository> ProcessPaymentUseCase<R> {
 		{
 			Ok(resp) => {
 				if resp.status().is_success() {
-					payment.requested_at = Some(Utc::now());
 					payment.processed_at = Some(Utc::now());
 					payment.processed_by = Some(processed_by);
 					self.payment_repo.save(payment).await?;
