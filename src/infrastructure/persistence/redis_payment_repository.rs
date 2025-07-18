@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::DateTime;
-use redis::{Client, Commands, Script};
+use redis::{AsyncCommands, Client, Commands, Script};
 
 use crate::domain::payment::Payment;
 use crate::domain::repository::PaymentRepository;
@@ -183,10 +183,36 @@ impl PaymentRepository for RedisPaymentRepository {
 			.get_connection()
 			.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
 
-		let is_already_processed = con
-			.sismember(PROCESSED_PAYMENTS_SET_KEY, payment_id)
-			.unwrap_or(false);
+		let is_already_processed: Option<f64> = con
+			.zscore(PROCESSED_PAYMENTS_SET_KEY, payment_id)
+			.unwrap_or(None);
 
-		Ok(is_already_processed)
+		Ok(is_already_processed.is_some())
+	}
+
+	async fn clear(&self) -> Result<(), Box<dyn std::error::Error + Send>> {
+		let mut con = self
+			.client
+			.get_multiplexed_async_connection()
+			.await
+			.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
+
+		let keys: Vec<String> = con
+			.keys("payment_summary:*")
+			.await
+			.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
+
+		let _: () = con
+			.del(keys)
+			.await
+			.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
+
+		// Delete the processed payments sorted set
+		let _: () = con
+			.del(PROCESSED_PAYMENTS_SET_KEY)
+			.await
+			.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
+
+		Ok(())
 	}
 }

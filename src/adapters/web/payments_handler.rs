@@ -3,17 +3,14 @@ use log::{info, warn};
 
 use crate::adapters::web::errors::ApiError;
 use crate::adapters::web::schema::{PaymentRequest, PaymentResponse};
+use crate::infrastructure::queue::redis_payment_queue::PaymentQueue;
 use crate::use_cases::create_payment::CreatePaymentUseCase;
 use crate::use_cases::dto::CreatePaymentCommand;
 
 #[post("/payments")]
 pub async fn payments(
 	payload: web::Json<PaymentRequest>,
-	create_payment_use_case: web::Data<
-		CreatePaymentUseCase<
-			crate::infrastructure::queue::redis_payment_queue::PaymentQueue,
-		>,
-	>,
+	create_payment_use_case: web::Data<CreatePaymentUseCase<PaymentQueue>>,
 ) -> impl Responder {
 	let command = CreatePaymentCommand {
 		correlation_id: payload.correlation_id,

@@ -10,7 +10,7 @@ pub mod domain;
 pub mod infrastructure;
 pub mod use_cases;
 
-use crate::adapters::web::handlers::{payments, payments_summary};
+use crate::adapters::web::handlers::{payments, payments_purge, payments_summary};
 use crate::infrastructure::config::settings::Config;
 use crate::infrastructure::persistence::redis_payment_repository::RedisPaymentRepository;
 use crate::infrastructure::queue::redis_payment_queue::PaymentQueue;
@@ -20,6 +20,7 @@ use crate::infrastructure::workers::processor_health_monitor_worker::processor_h
 use crate::use_cases::create_payment::CreatePaymentUseCase;
 use crate::use_cases::get_payment_summary::GetPaymentSummaryUseCase;
 use crate::use_cases::process_payment::ProcessPaymentUseCase;
+use crate::use_cases::purge_payments::PurgePaymentsUseCase;
 
 pub async fn run(config: Arc<Config>) -> std::io::Result<()> {
 	env_logger::init();
@@ -59,13 +60,16 @@ pub async fn run(config: Arc<Config>) -> std::io::Result<()> {
 	let create_payment_use_case = CreatePaymentUseCase::new(payment_queue.clone());
 	let get_payment_summary_use_case =
 		GetPaymentSummaryUseCase::new(payment_repo.clone());
+	let purge_payments_use_case = PurgePaymentsUseCase::new(payment_repo.clone());
 
 	HttpServer::new(move || {
 		App::new()
 			.app_data(web::Data::new(create_payment_use_case.clone()))
 			.app_data(web::Data::new(get_payment_summary_use_case.clone()))
+			.app_data(web::Data::new(purge_payments_use_case.clone()))
 			.service(payments)
 			.service(payments_summary)
+			.service(payments_purge)
 	})
 	.keep_alive(Duration::from_secs(config.server_keepalive))
 	.bind(("0.0.0.0", 9999))?
