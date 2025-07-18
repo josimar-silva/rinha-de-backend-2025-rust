@@ -1,7 +1,6 @@
 use redis::AsyncCommands;
 use rinha_de_backend::infrastructure::config::redis::{
-	DEFAULT_PROCESSOR_HEALTH_KEY, FALLBACK_PROCESSOR_HEALTH_KEY, PAYMENTS_QUEUE_KEY,
-	PROCESSED_PAYMENTS_SET_KEY,
+	PAYMENTS_QUEUE_KEY, PROCESSED_PAYMENTS_SET_KEY,
 };
 use testcontainers::GenericImage;
 use testcontainers::core::{ContainerPort, WaitFor};
@@ -49,13 +48,5 @@ pub async fn get_test_redis_client() -> RedisTestContainer {
 		.del(PROCESSED_PAYMENTS_SET_KEY)
 		.await
 		.expect("Failed to clear processed_correlation_ids");
-	let _: () = con
-		.del(DEFAULT_PROCESSOR_HEALTH_KEY)
-		.await
-		.expect("Failed to clear health:default");
-	let _: () = con
-		.del(FALLBACK_PROCESSOR_HEALTH_KEY)
-		.await
-		.expect("Failed to clear health:fallback");
 	RedisTestContainer { client, container }
 }

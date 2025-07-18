@@ -10,8 +10,6 @@ pub mod domain;
 pub mod infrastructure;
 pub mod use_cases;
 
-use circuitbreaker_rs::{CircuitBreaker, DefaultPolicy};
-
 use crate::adapters::web::handlers::{payments, payments_summary};
 use crate::infrastructure::config::settings::Config;
 use crate::infrastructure::persistence::redis_payment_repository::RedisPaymentRepository;
@@ -21,9 +19,7 @@ use crate::infrastructure::workers::payment_processor_worker::payment_processing
 use crate::infrastructure::workers::processor_health_monitor_worker::processor_health_monitor_worker;
 use crate::use_cases::create_payment::CreatePaymentUseCase;
 use crate::use_cases::get_payment_summary::GetPaymentSummaryUseCase;
-use crate::use_cases::process_payment::{
-	PaymentProcessingError, ProcessPaymentUseCase,
-};
+use crate::use_cases::process_payment::ProcessPaymentUseCase;
 
 pub async fn run(config: Arc<Config>) -> std::io::Result<()> {
 	env_logger::init();
@@ -34,6 +30,7 @@ pub async fn run(config: Arc<Config>) -> std::io::Result<()> {
 	let http_client = Client::new();
 
 	info!("Starting health check worker...");
+
 	let in_memory_router = InMemoryPaymentRouter::new();
 
 	tokio::spawn(processor_health_monitor_worker(
@@ -46,13 +43,9 @@ pub async fn run(config: Arc<Config>) -> std::io::Result<()> {
 	info!("Starting payment processing worker...");
 	let payment_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
-	let breaker =
-		CircuitBreaker::<DefaultPolicy, PaymentProcessingError>::builder().build();
-	let process_payment_use_case = ProcessPaymentUseCase::new(
-		payment_repo.clone(),
-		http_client.clone(),
-		breaker,
-	);
+
+	let process_payment_use_case =
+		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
 
 	tokio::spawn(payment_processing_worker(
 		payment_queue.clone(),

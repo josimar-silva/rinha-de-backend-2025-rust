@@ -61,10 +61,26 @@ pub async fn processor_health_monitor_worker(
 							 status",
 							resp.status()
 						);
+						let processor = PaymentProcessor {
+							name:              name.clone(),
+							url:               url.clone(),
+							health:
+								crate::domain::health_status::HealthStatus::Failing,
+							min_response_time: 0,
+						};
+						router.update_processor_health(processor);
 					}
 				}
 				Err(e) => {
 					error!("Failed to perform health check for {name}: {e}");
+					let processor = PaymentProcessor {
+						name:              name.clone(),
+						url:               url.clone(),
+						health:
+							crate::domain::health_status::HealthStatus::Failing,
+						min_response_time: 0,
+					};
+					router.update_processor_health(processor);
 				}
 			}
 		}

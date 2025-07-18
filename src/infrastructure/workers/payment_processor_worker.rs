@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use circuitbreaker_rs::State;
 use log::{error, info, warn};
 use tokio::time::sleep;
 
@@ -50,11 +51,27 @@ pub async fn payment_processing_worker<Q, PR, R>(
 
 		let mut processed = false;
 
-		if let Some((processor_url, processor_name)) =
+		if let Some((processor_url, processor_name, circuit_breaker)) =
 			router.get_processor_for_payment().await
 		{
+			if circuit_breaker.current_state() == State::Open {
+				warn!(
+					"Circuit breaker for {processor_name} is open. Skipping \
+					 payment processing and re-queueing."
+				);
+				if let Err(e) = queue.push(message).await {
+					error!("Failed to re-queue payment: {e}");
+				}
+				continue;
+			}
+
 			processed = process_payment_use_case
-				.execute(payment.clone(), processor_url, processor_name)
+				.execute(
+					payment.clone(),
+					processor_url,
+					processor_name,
+					circuit_breaker,
+				)
 				.await
 				.unwrap_or(false);
 		}

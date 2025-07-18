@@ -10,7 +10,7 @@ use crate::domain::payment::Payment;
 use crate::domain::repository::PaymentRepository;
 
 #[derive(Debug)]
-pub struct PaymentProcessingError(String);
+pub struct PaymentProcessingError(pub String);
 
 impl fmt::Display for PaymentProcessingError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -38,21 +38,15 @@ impl
 
 #[derive(Clone)]
 pub struct ProcessPaymentUseCase<R: PaymentRepository> {
-	payment_repo:    R,
-	http_client:     Client,
-	circuit_breaker: CircuitBreaker<DefaultPolicy, PaymentProcessingError>,
+	payment_repo: R,
+	http_client:  Client,
 }
 
 impl<R: PaymentRepository> ProcessPaymentUseCase<R> {
-	pub fn new(
-		payment_repo: R,
-		http_client: Client,
-		circuit_breaker: CircuitBreaker<DefaultPolicy, PaymentProcessingError>,
-	) -> Self {
+	pub fn new(payment_repo: R, http_client: Client) -> Self {
 		Self {
 			payment_repo,
 			http_client,
-			circuit_breaker,
 		}
 	}
 
@@ -61,11 +55,11 @@ impl<R: PaymentRepository> ProcessPaymentUseCase<R> {
 		mut payment: Payment,
 		processor_url: String,
 		processed_by: String,
+		circuit_breaker: CircuitBreaker<DefaultPolicy, PaymentProcessingError>,
 	) -> Result<bool, Box<dyn std::error::Error + Send>> {
 		payment.requested_at = Some(Utc::now());
 
-		let result = self
-			.circuit_breaker
+		let result = circuit_breaker
 			.call_async(|| async {
 				let resp = self
 					.http_client
