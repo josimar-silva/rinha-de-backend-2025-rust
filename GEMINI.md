@@ -33,12 +33,15 @@ This layered approach ensures that changes in external technologies do not impac
   - `just format`: Format the code.
   - `just test`: Run all tests.
 
+*This is the way, young Mandalorian.*
+
 ## Project Structure
 
 - `src/`: Contains the main source code.
-  - `api/`: Handlers for API endpoints and error handling.
-  - `model/`: Data structures and business logic.
-  - `workers/`: Background workers for tasks like health checks and payment processing.
+  - `adapters/`: Adapters layer, including web handlers.
+  - `domain/`: Domain layer, containing core business logic, entities, and use cases.
+  - `infrastructure/`: Infrastructure layer, implementing domain interfaces for external concerns like persistence, queueing, and workers.
+  - `use_cases/`: Application-specific use cases.
 - `tests/`: Integration tests.
 - `payment-processor/`: Docker-compose for external payment processors.
 - `Dockerfile`: For containerizing the application.
