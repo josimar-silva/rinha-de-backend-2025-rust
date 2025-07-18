@@ -1,14 +1,13 @@
 use chrono::Days;
-use rinha_de_backend::domain::repository::{PaymentProcessorRepository, PaymentRepository};
-use rinha_de_backend::domain::queue::{Message, Queue};
 use reqwest::Client;
-
 use rinha_de_backend::domain::health_status::HealthStatus;
 use rinha_de_backend::domain::payment::Payment;
 use rinha_de_backend::domain::payment_processor::PaymentProcessor;
-use rinha_de_backend::infrastructure::persistence::redis_payment_processor_repository::RedisPaymentProcessorRepository;
+use rinha_de_backend::domain::queue::{Message, Queue};
+use rinha_de_backend::domain::repository::PaymentRepository;
 use rinha_de_backend::infrastructure::persistence::redis_payment_repository::RedisPaymentRepository;
 use rinha_de_backend::infrastructure::queue::redis_payment_queue::PaymentQueue;
+use rinha_de_backend::infrastructure::routing::in_memory_payment_router::InMemoryPaymentRouter;
 use rinha_de_backend::infrastructure::workers::payment_processor_worker::payment_processing_worker;
 use rinha_de_backend::use_cases::process_payment::ProcessPaymentUseCase;
 use tokio::time::Duration;
@@ -31,9 +30,9 @@ async fn test_payment_processing_worker_default_success() {
 
 	let redis_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
-	let processor_repo = RedisPaymentProcessorRepository::new(redis_client.clone());
 	let process_payment_use_case =
 		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+	let router = InMemoryPaymentRouter::new();
 
 	// Set up processor health
 	let default_processor = PaymentProcessor {
@@ -42,7 +41,7 @@ async fn test_payment_processing_worker_default_success() {
 		health:            HealthStatus::Healthy,
 		min_response_time: 0,
 	};
-	processor_repo.save(default_processor).await.unwrap();
+	router.update_processor_health(default_processor);
 
 	let fallback_processor = PaymentProcessor {
 		name:              "fallback".to_string(),
@@ -50,7 +49,7 @@ async fn test_payment_processing_worker_default_success() {
 		health:            HealthStatus::Failing,
 		min_response_time: 0,
 	};
-	processor_repo.save(fallback_processor).await.unwrap();
+	router.update_processor_health(fallback_processor);
 
 	let payment_to_process = Payment {
 		correlation_id: Uuid::new_v4(),
@@ -72,10 +71,8 @@ async fn test_payment_processing_worker_default_success() {
 	let worker_handle = tokio::spawn(payment_processing_worker(
 		redis_queue.clone(),
 		payment_repo.clone(),
-		processor_repo.clone(),
 		process_payment_use_case.clone(),
-		default_url.clone(),
-		fallback_url.clone(),
+		router.clone(),
 	));
 
 	// Give the worker some time to process the payment
@@ -109,9 +106,9 @@ async fn test_payment_processing_worker_fallback_success() {
 
 	let payment_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
-	let processor_repo = RedisPaymentProcessorRepository::new(redis_client.clone());
 	let process_payment_use_case =
 		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+	let router = InMemoryPaymentRouter::new();
 
 	// Set up processor health
 	let default_processor = PaymentProcessor {
@@ -120,7 +117,7 @@ async fn test_payment_processing_worker_fallback_success() {
 		health:            HealthStatus::Failing,
 		min_response_time: 10000,
 	};
-	processor_repo.save(default_processor).await.unwrap();
+	router.update_processor_health(default_processor);
 
 	let fallback_processor = PaymentProcessor {
 		name:              "fallback".to_string(),
@@ -128,7 +125,7 @@ async fn test_payment_processing_worker_fallback_success() {
 		health:            HealthStatus::Healthy,
 		min_response_time: 10,
 	};
-	processor_repo.save(fallback_processor).await.unwrap();
+	router.update_processor_health(fallback_processor);
 
 	let payment_to_process = Payment {
 		correlation_id: Uuid::new_v4(),
@@ -149,10 +146,8 @@ async fn test_payment_processing_worker_fallback_success() {
 	let worker_handle = tokio::spawn(payment_processing_worker(
 		payment_queue.clone(),
 		payment_repo.clone(),
-		processor_repo.clone(),
 		process_payment_use_case.clone(),
-		default_url.clone(),
-		fallback_url.clone(),
+		router.clone(),
 	));
 
 	// Give the worker some time to process the payment
@@ -181,9 +176,9 @@ async fn test_payment_processing_worker_requeue_message_given_processor_are_down
 
 	let redis_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
-	let processor_repo = RedisPaymentProcessorRepository::new(redis_client.clone());
 	let process_payment_use_case =
 		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+	let router = InMemoryPaymentRouter::new();
 
 	// Set up processors to be failing
 	let default_processor = PaymentProcessor {
@@ -192,7 +187,7 @@ async fn test_payment_processing_worker_requeue_message_given_processor_are_down
 		health:            HealthStatus::Failing,
 		min_response_time: 0,
 	};
-	processor_repo.save(default_processor).await.unwrap();
+	router.update_processor_health(default_processor);
 
 	let fallback_processor = PaymentProcessor {
 		name:              "fallback".to_string(),
@@ -200,7 +195,7 @@ async fn test_payment_processing_worker_requeue_message_given_processor_are_down
 		health:            HealthStatus::Failing,
 		min_response_time: 0,
 	};
-	processor_repo.save(fallback_processor).await.unwrap();
+	router.update_processor_health(fallback_processor);
 
 	let payment_to_process = Payment {
 		correlation_id: Uuid::new_v4(),
@@ -222,10 +217,8 @@ async fn test_payment_processing_worker_requeue_message_given_processor_are_down
 	let worker_handle = tokio::spawn(payment_processing_worker(
 		redis_queue.clone(),
 		payment_repo.clone(),
-		processor_repo.clone(),
 		process_payment_use_case.clone(),
-		"http://non-existent-url:8080".to_string(),
-		"http://non-existent-url:8080".to_string(),
+		router.clone(),
 	));
 
 	// Give the worker some time to attempt processing and re-queue
@@ -257,9 +250,9 @@ async fn test_payment_processing_worker_skip_processed_message() {
 
 	let redis_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
-	let processor_repo = RedisPaymentProcessorRepository::new(redis_client.clone());
 	let process_payment_use_case =
 		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+	let router = InMemoryPaymentRouter::new();
 
 	// Set up processor health
 	let default_processor = PaymentProcessor {
@@ -268,7 +261,7 @@ async fn test_payment_processing_worker_skip_processed_message() {
 		health:            HealthStatus::Healthy,
 		min_response_time: 0,
 	};
-	processor_repo.save(default_processor).await.unwrap();
+	router.update_processor_health(default_processor);
 
 	let fallback_processor = PaymentProcessor {
 		name:              "fallback".to_string(),
@@ -276,7 +269,7 @@ async fn test_payment_processing_worker_skip_processed_message() {
 		health:            HealthStatus::Failing,
 		min_response_time: 0,
 	};
-	processor_repo.save(fallback_processor).await.unwrap();
+	router.update_processor_health(fallback_processor);
 
 	let payment_to_process = Payment {
 		correlation_id: Uuid::new_v4(),
@@ -308,10 +301,8 @@ async fn test_payment_processing_worker_skip_processed_message() {
 	let worker_handle = tokio::spawn(payment_processing_worker(
 		redis_queue.clone(),
 		payment_repo.clone(),
-		processor_repo.clone(),
 		process_payment_use_case.clone(),
-		default_url.clone(),
-		fallback_url.clone(),
+		router.clone(),
 	));
 
 	// Give the worker some time to process
@@ -340,9 +331,9 @@ async fn test_payment_processing_worker_redis_failure() {
 
 	let redis_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
-	let processor_repo = RedisPaymentProcessorRepository::new(redis_client.clone());
 	let process_payment_use_case =
 		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+	let router = InMemoryPaymentRouter::new();
 
 	// Stop the redis container to simulate a connection failure
 	let _ = redis_container_instance.stop().await;
@@ -350,10 +341,8 @@ async fn test_payment_processing_worker_redis_failure() {
 	let worker_handle = tokio::spawn(payment_processing_worker(
 		redis_queue,
 		payment_repo,
-		processor_repo,
 		process_payment_use_case,
-		"http://localhost:8080".to_string(),
-		"http://localhost:8080".to_string(),
+		router,
 	));
 
 	// Give the worker some time to run

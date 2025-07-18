@@ -12,14 +12,13 @@ pub mod use_cases;
 
 use crate::adapters::web::handlers::{payments, payments_summary};
 use crate::infrastructure::config::settings::Config;
-use crate::infrastructure::persistence::redis_payment_processor_repository::RedisPaymentProcessorRepository;
 use crate::infrastructure::persistence::redis_payment_repository::RedisPaymentRepository;
 use crate::infrastructure::queue::redis_payment_queue::PaymentQueue;
-use crate::infrastructure::workers::health_check_worker::health_check_worker;
+use crate::infrastructure::routing::in_memory_payment_router::InMemoryPaymentRouter;
 use crate::infrastructure::workers::payment_processor_worker::payment_processing_worker;
+use crate::infrastructure::workers::processor_health_monitor_worker::processor_health_monitor_worker;
 use crate::use_cases::create_payment::CreatePaymentUseCase;
 use crate::use_cases::get_payment_summary::GetPaymentSummaryUseCase;
-use crate::use_cases::health_check::HealthCheckUseCase;
 use crate::use_cases::process_payment::ProcessPaymentUseCase;
 
 pub async fn run(config: Arc<Config>) -> std::io::Result<()> {
@@ -31,12 +30,11 @@ pub async fn run(config: Arc<Config>) -> std::io::Result<()> {
 	let http_client = Client::new();
 
 	info!("Starting health check worker...");
-	let processor_repo = RedisPaymentProcessorRepository::new(redis_client.clone());
-	let health_check_use_case =
-		HealthCheckUseCase::new(processor_repo.clone(), http_client.clone());
+	let in_memory_router = InMemoryPaymentRouter::new();
 
-	tokio::spawn(health_check_worker(
-		health_check_use_case,
+	tokio::spawn(processor_health_monitor_worker(
+		in_memory_router.clone(),
+		http_client.clone(),
 		config.default_payment_processor_url.clone(),
 		config.fallback_payment_processor_url.clone(),
 	));
@@ -50,10 +48,8 @@ pub async fn run(config: Arc<Config>) -> std::io::Result<()> {
 	tokio::spawn(payment_processing_worker(
 		payment_queue.clone(),
 		payment_repo.clone(),
-		processor_repo.clone(),
 		process_payment_use_case,
-		config.default_payment_processor_url.clone(),
-		config.fallback_payment_processor_url.clone(),
+		in_memory_router.clone(),
 	));
 
 	info!("Starting Actix-Web server on 0.0.0.0:9999...");
