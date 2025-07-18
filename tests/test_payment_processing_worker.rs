@@ -1,4 +1,5 @@
 use chrono::Days;
+use circuitbreaker_rs::{CircuitBreaker, DefaultPolicy};
 use reqwest::Client;
 use rinha_de_backend::domain::health_status::HealthStatus;
 use rinha_de_backend::domain::payment::Payment;
@@ -9,7 +10,9 @@ use rinha_de_backend::infrastructure::persistence::redis_payment_repository::Red
 use rinha_de_backend::infrastructure::queue::redis_payment_queue::PaymentQueue;
 use rinha_de_backend::infrastructure::routing::in_memory_payment_router::InMemoryPaymentRouter;
 use rinha_de_backend::infrastructure::workers::payment_processor_worker::payment_processing_worker;
-use rinha_de_backend::use_cases::process_payment::ProcessPaymentUseCase;
+use rinha_de_backend::use_cases::process_payment::{
+	PaymentProcessingError, ProcessPaymentUseCase,
+};
 use tokio::time::Duration;
 use uuid::Uuid;
 
@@ -27,11 +30,15 @@ async fn test_payment_processing_worker_default_success() {
 	let default_url = default_processor_container.url.clone();
 	let fallback_url = fallback_processor_container.url.clone();
 	let http_client = Client::new();
-
+	let breaker =
+		CircuitBreaker::<DefaultPolicy, PaymentProcessingError>::builder().build();
 	let redis_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
-	let process_payment_use_case =
-		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+	let process_payment_use_case = ProcessPaymentUseCase::new(
+		payment_repo.clone(),
+		http_client.clone(),
+		breaker,
+	);
 	let router = InMemoryPaymentRouter::new();
 
 	// Set up processor health
@@ -103,11 +110,15 @@ async fn test_payment_processing_worker_fallback_success() {
 	let default_url = default_processor_container.url.clone();
 	let fallback_url = fallback_processor_container.url.clone();
 	let http_client = Client::new();
-
+	let breaker =
+		CircuitBreaker::<DefaultPolicy, PaymentProcessingError>::builder().build();
 	let payment_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
-	let process_payment_use_case =
-		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+	let process_payment_use_case = ProcessPaymentUseCase::new(
+		payment_repo.clone(),
+		http_client.clone(),
+		breaker,
+	);
 	let router = InMemoryPaymentRouter::new();
 
 	// Set up processor health
@@ -173,11 +184,15 @@ async fn test_payment_processing_worker_requeue_message_given_processor_are_down
 	let redis_container = get_test_redis_client().await;
 	let redis_client = redis_container.client.clone();
 	let http_client = Client::new();
-
+	let breaker =
+		CircuitBreaker::<DefaultPolicy, PaymentProcessingError>::builder().build();
 	let redis_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
-	let process_payment_use_case =
-		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+	let process_payment_use_case = ProcessPaymentUseCase::new(
+		payment_repo.clone(),
+		http_client.clone(),
+		breaker,
+	);
 	let router = InMemoryPaymentRouter::new();
 
 	// Set up processors to be failing
@@ -247,11 +262,15 @@ async fn test_payment_processing_worker_skip_processed_message() {
 	let default_url = default_processor_container.url.clone();
 	let fallback_url = fallback_processor_container.url.clone();
 	let http_client = Client::new();
-
+	let breaker =
+		CircuitBreaker::<DefaultPolicy, PaymentProcessingError>::builder().build();
 	let redis_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
-	let process_payment_use_case =
-		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+	let process_payment_use_case = ProcessPaymentUseCase::new(
+		payment_repo.clone(),
+		http_client.clone(),
+		breaker,
+	);
 	let router = InMemoryPaymentRouter::new();
 
 	// Set up processor health
@@ -328,11 +347,15 @@ async fn test_payment_processing_worker_redis_failure() {
 	let redis_client = redis_container.client.clone();
 	let redis_container_instance = redis_container.container;
 	let http_client = Client::new();
-
+	let breaker =
+		CircuitBreaker::<DefaultPolicy, PaymentProcessingError>::builder().build();
 	let redis_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
-	let process_payment_use_case =
-		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+	let process_payment_use_case = ProcessPaymentUseCase::new(
+		payment_repo.clone(),
+		http_client.clone(),
+		breaker,
+	);
 	let router = InMemoryPaymentRouter::new();
 
 	// Stop the redis container to simulate a connection failure
