@@ -14,7 +14,7 @@ ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 
-RUN cargo build --release --locked --no-default-features
+RUN RUSTFLAGS="-C target-cpu=native" cargo build --release --locked --no-default-features
 
 FROM debian:trixie-slim as runner
 
@@ -31,3 +31,4 @@ COPY --from=builder /app/target/release/rinha-de-backend .
 EXPOSE 9999
 
 CMD ["./rinha-de-backend"]
+
