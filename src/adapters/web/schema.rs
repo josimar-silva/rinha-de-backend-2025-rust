@@ -17,8 +17,8 @@ pub struct PaymentResponse {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct PaymentsSummaryFilter {
-	#[serde(with = "chrono::serde::ts_seconds_option", default)]
+	#[serde(with = "chrono::serde::ts_milliseconds_option", default)]
 	pub from: Option<DateTime<Utc>>,
-	#[serde(with = "chrono::serde::ts_seconds_option", default)]
+	#[serde(with = "chrono::serde::ts_milliseconds_option", default)]
 	pub to:   Option<DateTime<Utc>>,
 }

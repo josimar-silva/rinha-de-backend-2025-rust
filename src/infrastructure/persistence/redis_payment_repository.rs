@@ -83,14 +83,14 @@ impl PaymentRepository for RedisPaymentRepository {
 					"requested_at",
 					payment
 						.requested_at
-						.map(|dt| dt.timestamp().to_string())
+						.map(|dt| dt.timestamp_millis().to_string())
 						.unwrap_or_default(),
 				),
 				(
 					"processed_at",
 					payment
 						.processed_at
-						.map(|dt| dt.timestamp().to_string())
+						.map(|dt| dt.timestamp_millis().to_string())
 						.unwrap_or_default(),
 				),
 				("processed_by", payment_group),
@@ -101,7 +101,7 @@ impl PaymentRepository for RedisPaymentRepository {
 				payment_id,
 				payment
 					.requested_at
-					.map(|dt| dt.timestamp().to_string())
+					.map(|dt| dt.timestamp_millis().to_string())
 					.unwrap_or_default(),
 			)
 			.query_async::<()>(&mut con)

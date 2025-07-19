@@ -310,7 +310,7 @@ async fn test_payment_processing_worker_skip_processed_message() {
 	let now = chrono::Utc::now();
 	let one_day_ago = now.checked_sub_days(Days::new(1)).unwrap();
 	let (processed_payments, processed_amount) = payment_repo
-		.get_summary_by_group("default", one_day_ago.timestamp(), now.timestamp())
+		.get_summary_by_group("default", one_day_ago.timestamp_millis(), now.timestamp_millis())
 		.await
 		.unwrap();
 
