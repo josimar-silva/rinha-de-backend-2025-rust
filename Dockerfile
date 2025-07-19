@@ -20,6 +20,12 @@ FROM debian:trixie-slim as runner
 
 WORKDIR /app
 
+# Install profiling tools
+RUN apt-get update && apt-get install -y \
+    linux-perf \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /app/target/release/rinha-de-backend .
 
 EXPOSE 9999
