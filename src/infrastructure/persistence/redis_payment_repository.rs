@@ -1,6 +1,7 @@
 use async_trait::async_trait;
-use chrono::DateTime;
 use redis::{AsyncCommands, Client, Commands, Script};
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
 use crate::domain::payment::Payment;
 use crate::domain::repository::PaymentRepository;
@@ -19,8 +20,8 @@ impl RedisPaymentRepository {
 	fn payments_summary_lua(
 		conn: &mut redis::Connection,
 		group: &str,
-		from_ts: i64,
-		to_ts: i64,
+		from_ts: i128,
+		to_ts: i128,
 	) -> redis::RedisResult<(usize, f64)> {
 		let lua = Script::new(
 			r#"
@@ -83,14 +84,14 @@ impl PaymentRepository for RedisPaymentRepository {
 					"requested_at",
 					payment
 						.requested_at
-						.map(|dt| dt.timestamp().to_string())
+						.map(|ts| ts.to_string())
 						.unwrap_or_default(),
 				),
 				(
 					"processed_at",
 					payment
 						.processed_at
-						.map(|dt| dt.timestamp().to_string())
+						.map(|ts| ts.to_string())
 						.unwrap_or_default(),
 				),
 				("processed_by", payment_group),
@@ -101,7 +102,7 @@ impl PaymentRepository for RedisPaymentRepository {
 				payment_id,
 				payment
 					.requested_at
-					.map(|dt| dt.timestamp().to_string())
+					.map(|ts| ts.unix_timestamp_nanos())
 					.unwrap_or_default(),
 			)
 			.query_async::<()>(&mut con)
@@ -114,15 +115,20 @@ impl PaymentRepository for RedisPaymentRepository {
 	async fn get_summary_by_group(
 		&self,
 		group: &str,
-		from_ts: i64,
-		to_ts: i64,
+		from_ts: OffsetDateTime,
+		to_ts: OffsetDateTime,
 	) -> Result<(usize, f64), Box<dyn std::error::Error + Send>> {
 		let mut con = self
 			.client
 			.get_connection()
 			.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
-		let (req, amt) = Self::payments_summary_lua(&mut con, group, from_ts, to_ts)
-			.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
+		let (req, amt) = Self::payments_summary_lua(
+			&mut con,
+			group,
+			from_ts.unix_timestamp_nanos(),
+			to_ts.unix_timestamp_nanos(),
+		)
+		.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
 		Ok((req, amt))
 	}
 
@@ -149,12 +155,10 @@ impl PaymentRepository for RedisPaymentRepository {
 		{
 			let requested_at = map
 				.get("requested_at")
-				.and_then(|s| s.parse::<i64>().ok())
-				.and_then(|ts| DateTime::from_timestamp(ts, 0));
+				.and_then(|odt| OffsetDateTime::parse(odt, &Rfc3339).ok());
 			let processed_at = map
 				.get("processed_at")
-				.and_then(|s| s.parse::<i64>().ok())
-				.and_then(|ts| DateTime::from_timestamp(ts, 0));
+				.and_then(|odt| OffsetDateTime::parse(odt, &Rfc3339).ok());
 			let processed_by = map.get("processed_by").cloned();
 
 			let payment = Payment {

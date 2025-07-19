@@ -1,9 +1,9 @@
 use actix_web::{App, test, web};
-use chrono::Utc;
 use rinha_de_backend::adapters::web::handlers::payments_purge;
 use rinha_de_backend::domain::repository::PaymentRepository;
 use rinha_de_backend::infrastructure::persistence::redis_payment_repository::RedisPaymentRepository;
 use rinha_de_backend::use_cases::purge_payments::PurgePaymentsUseCase;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 mod support;
@@ -31,15 +31,15 @@ async fn test_payments_purge_returns_success() {
 	let payment1 = Payment {
 		correlation_id: Uuid::new_v4(),
 		amount:         100.0,
-		requested_at:   Some(Utc::now()),
-		processed_at:   Some(Utc::now()),
+		requested_at:   Some(OffsetDateTime::now_utc()),
+		processed_at:   Some(OffsetDateTime::now_utc()),
 		processed_by:   Some("group1".to_string()),
 	};
 	let payment2 = Payment {
 		correlation_id: Uuid::new_v4(),
 		amount:         200.0,
-		requested_at:   Some(Utc::now()),
-		processed_at:   Some(Utc::now()),
+		requested_at:   Some(OffsetDateTime::now_utc()),
+		processed_at:   Some(OffsetDateTime::now_utc()),
 		processed_by:   Some("group2".to_string()),
 	};
 	payment_repository.save(payment1.clone()).await.unwrap();

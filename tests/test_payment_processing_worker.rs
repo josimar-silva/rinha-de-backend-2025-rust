@@ -1,4 +1,3 @@
-use chrono::Days;
 use reqwest::Client;
 use rinha_de_backend::domain::health_status::HealthStatus;
 use rinha_de_backend::domain::payment::Payment;
@@ -10,6 +9,7 @@ use rinha_de_backend::infrastructure::queue::redis_payment_queue::PaymentQueue;
 use rinha_de_backend::infrastructure::routing::in_memory_payment_router::InMemoryPaymentRouter;
 use rinha_de_backend::infrastructure::workers::payment_processor_worker::payment_processing_worker;
 use rinha_de_backend::use_cases::process_payment::ProcessPaymentUseCase;
+use time::OffsetDateTime;
 use tokio::time::Duration;
 use uuid::Uuid;
 
@@ -282,8 +282,8 @@ async fn test_payment_processing_worker_skip_processed_message() {
 	let pre_processed_payment = Payment {
 		correlation_id: payment_to_process.correlation_id,
 		amount:         payment_to_process.amount,
-		requested_at:   Some(chrono::Utc::now()),
-		processed_at:   Some(chrono::Utc::now()),
+		requested_at:   Some(OffsetDateTime::now_utc()),
+		processed_at:   Some(OffsetDateTime::now_utc()),
 		processed_by:   Some("default".to_string()),
 	};
 	payment_repo.save(pre_processed_payment).await.unwrap();
@@ -307,10 +307,10 @@ async fn test_payment_processing_worker_skip_processed_message() {
 	// Give the worker some time to process
 	tokio::time::sleep(Duration::from_secs(5)).await;
 
-	let now = chrono::Utc::now();
-	let one_day_ago = now.checked_sub_days(Days::new(1)).unwrap();
+	let now = OffsetDateTime::now_utc();
+	let one_day_ago = now.checked_sub(time::Duration::days(1)).unwrap();
 	let (processed_payments, processed_amount) = payment_repo
-		.get_summary_by_group("default", one_day_ago.timestamp(), now.timestamp())
+		.get_summary_by_group("default", one_day_ago, now)
 		.await
 		.unwrap();
 

@@ -1,3 +1,7 @@
+use std::ops::{Add, Sub};
+
+use time::OffsetDateTime;
+
 use crate::domain::repository::PaymentRepository;
 use crate::use_cases::dto::{
 	GetPaymentSummaryQuery, PaymentSummaryResult, PaymentsSummaryResponse,
@@ -17,8 +21,12 @@ impl<R: PaymentRepository> GetPaymentSummaryUseCase<R> {
 		&self,
 		query: GetPaymentSummaryQuery,
 	) -> Result<PaymentsSummaryResponse, Box<dyn std::error::Error + Send>> {
-		let from = query.from.unwrap_or(i64::MIN);
-		let to = query.to.unwrap_or(i64::MAX);
+		let from = query
+			.from
+			.unwrap_or(OffsetDateTime::now_utc().sub(time::Duration::days(30)));
+		let to = query
+			.to
+			.unwrap_or(OffsetDateTime::now_utc().add(time::Duration::days(30)));
 
 		let (default_total_requests, default_total_amount) = self
 			.payment_repo

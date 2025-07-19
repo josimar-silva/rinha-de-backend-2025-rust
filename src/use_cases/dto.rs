@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -9,8 +10,8 @@ pub struct CreatePaymentCommand {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct GetPaymentSummaryQuery {
-	pub from: Option<i64>,
-	pub to:   Option<i64>,
+	pub from: Option<OffsetDateTime>,
+	pub to:   Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

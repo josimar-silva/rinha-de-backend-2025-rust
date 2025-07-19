@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use time::OffsetDateTime;
 
 use crate::domain::payment::Payment;
 
@@ -11,8 +12,8 @@ pub trait PaymentRepository: Send + Sync + 'static {
 	async fn get_summary_by_group(
 		&self,
 		group: &str,
-		from_ts: i64,
-		to_ts: i64,
+		from_ts: OffsetDateTime,
+		to_ts: OffsetDateTime,
 	) -> Result<(usize, f64), Box<dyn std::error::Error + Send>>;
 	async fn get_payment_summary(
 		&self,

@@ -14,8 +14,8 @@ pub async fn payments_summary(
 	>,
 ) -> impl Responder {
 	let query = GetPaymentSummaryQuery {
-		from: filter.from.map(|dt| dt.timestamp()),
-		to:   filter.to.map(|dt| dt.timestamp()),
+		from: filter.from,
+		to:   filter.to,
 	};
 
 	match get_payment_summary_use_case.execute(query).await {

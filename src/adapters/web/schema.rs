@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use actix_web::cookie::time::OffsetDateTime;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -17,8 +17,8 @@ pub struct PaymentResponse {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct PaymentsSummaryFilter {
-	#[serde(with = "chrono::serde::ts_seconds_option", default)]
-	pub from: Option<DateTime<Utc>>,
-	#[serde(with = "chrono::serde::ts_seconds_option", default)]
-	pub to:   Option<DateTime<Utc>>,
+	#[serde(with = "time::serde::rfc3339::option", default)]
+	pub from: Option<OffsetDateTime>,
+	#[serde(with = "time::serde::rfc3339::option", default)]
+	pub to:   Option<OffsetDateTime>,
 }
