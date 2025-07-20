@@ -26,7 +26,10 @@ async fn test_payment_processing_worker_default_success() {
 		setup_payment_processors().await;
 	let default_url = default_processor_container.url.clone();
 	let fallback_url = fallback_processor_container.url.clone();
-	let http_client = Client::new();
+	let http_client = Client::builder()
+		.timeout(Duration::from_secs(2))
+		.build()
+		.unwrap();
 	let redis_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
 	let process_payment_use_case =
@@ -101,7 +104,10 @@ async fn test_payment_processing_worker_fallback_success() {
 		setup_payment_processors().await;
 	let default_url = default_processor_container.url.clone();
 	let fallback_url = fallback_processor_container.url.clone();
-	let http_client = Client::new();
+	let http_client = Client::builder()
+		.timeout(Duration::from_secs(2))
+		.build()
+		.unwrap();
 
 	let payment_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
@@ -171,7 +177,10 @@ async fn test_payment_processing_worker_fallback_success() {
 async fn test_payment_processing_worker_requeue_message_given_processor_are_down() {
 	let redis_container = get_test_redis_client().await;
 	let redis_client = redis_container.client.clone();
-	let http_client = Client::new();
+	let http_client = Client::builder()
+		.timeout(Duration::from_secs(2))
+		.build()
+		.unwrap();
 
 	let redis_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
@@ -245,7 +254,10 @@ async fn test_payment_processing_worker_skip_processed_message() {
 		setup_payment_processors().await;
 	let default_url = default_processor_container.url.clone();
 	let fallback_url = fallback_processor_container.url.clone();
-	let http_client = Client::new();
+	let http_client = Client::builder()
+		.timeout(Duration::from_secs(2))
+		.build()
+		.unwrap();
 
 	let redis_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
@@ -326,7 +338,10 @@ async fn test_payment_processing_worker_redis_failure() {
 	let redis_container = get_test_redis_client().await;
 	let redis_client = redis_container.client.clone();
 	let redis_container_instance = redis_container.container;
-	let http_client = Client::new();
+	let http_client = Client::builder()
+		.timeout(Duration::from_secs(2))
+		.build()
+		.unwrap();
 
 	let redis_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
@@ -362,7 +377,10 @@ async fn test_payment_processing_worker_circuit_breaker_open() {
 		setup_payment_processors().await;
 	let default_url = default_processor_container.url.clone();
 	let fallback_url = fallback_processor_container.url.clone();
-	let http_client = Client::new();
+	let http_client = Client::builder()
+		.timeout(Duration::from_secs(2))
+		.build()
+		.unwrap();
 
 	let redis_queue = PaymentQueue::new(redis_client.clone());
 	let payment_repo = RedisPaymentRepository::new(redis_client.clone());

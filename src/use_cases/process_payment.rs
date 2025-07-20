@@ -52,7 +52,7 @@ impl<R: PaymentRepository> ProcessPaymentUseCase<R> {
 		let result: Result<bool, BreakerError<PaymentProcessingError>> =
 			circuit_breaker
 				.call_async(|| async {
-					let resp = self
+					let response = self
 						.http_client
 						.post(format!("{processor_url}/payments"))
 						.json(&payment)
@@ -60,16 +60,16 @@ impl<R: PaymentRepository> ProcessPaymentUseCase<R> {
 						.await
 						.map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
 
-					if resp.status().is_success() {
+					if response.status().is_success() {
 						Ok(true)
 					} else {
 						error!(
 							"Processor returned non-success status for {}: {}",
 							payment.correlation_id,
-							resp.status()
+							response.status()
 						);
 
-						if resp.status().is_client_error() {
+						if response.status().is_client_error() {
 							return Ok(false);
 						}
 
@@ -83,10 +83,6 @@ impl<R: PaymentRepository> ProcessPaymentUseCase<R> {
 		match result {
 			Ok(result) => {
 				if !result {
-					error!(
-						"Payment processing failed for {}: Service unavailable",
-						payment.correlation_id
-					);
 					Ok(false)
 				} else {
 					payment.processed_at = Some(OffsetDateTime::now_utc());
