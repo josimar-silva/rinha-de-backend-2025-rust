@@ -1,7 +1,8 @@
-use log::{error, info};
+use log::error;
 use reqwest::Client;
 use tokio::time::{Duration, sleep};
 
+use crate::domain::health_status::HealthStatus;
 use crate::domain::payment_processor::PaymentProcessor;
 use crate::infrastructure::routing::in_memory_payment_router::InMemoryPaymentRouter;
 
@@ -19,6 +20,7 @@ pub async fn processor_health_monitor_worker(
 	loop {
 		for (name, url) in &urls {
 			let health_url = format!("{url}/payments/service-health");
+
 			match http_client.get(&health_url).send().await {
 				Ok(resp) => {
 					if resp.status().is_success() {
@@ -31,22 +33,17 @@ pub async fn processor_health_monitor_worker(
 										as u64;
 
 								let health_status = if failing {
-									crate::domain::health_status::HealthStatus::Failing
+									HealthStatus::Failing
 								} else {
-									crate::domain::health_status::HealthStatus::Healthy
+									HealthStatus::Healthy
 								};
 
-								let processor = PaymentProcessor {
+								router.update_processor_health(PaymentProcessor {
 									name: name.clone(),
 									url: url.clone(),
 									health: health_status.clone(),
 									min_response_time,
-								};
-								router.update_processor_health(processor);
-								info!(
-									"Updated health for {name}: {:?}",
-									health_status.clone()
-								);
+								});
 							}
 							Err(e) => {
 								error!(
@@ -56,19 +53,12 @@ pub async fn processor_health_monitor_worker(
 							}
 						}
 					} else {
-						error!(
-							"Health check for {name}: {} returned non-success \
-							 status",
-							resp.status()
-						);
-						let processor = PaymentProcessor {
+						router.update_processor_health(PaymentProcessor {
 							name:              name.clone(),
 							url:               url.clone(),
-							health:
-								crate::domain::health_status::HealthStatus::Failing,
+							health:            HealthStatus::Failing,
 							min_response_time: 0,
-						};
-						router.update_processor_health(processor);
+						});
 					}
 				}
 				Err(e) => {
@@ -76,14 +66,14 @@ pub async fn processor_health_monitor_worker(
 					let processor = PaymentProcessor {
 						name:              name.clone(),
 						url:               url.clone(),
-						health:
-							crate::domain::health_status::HealthStatus::Failing,
+						health:            HealthStatus::Failing,
 						min_response_time: 0,
 					};
 					router.update_processor_health(processor);
 				}
 			}
 		}
+
 		// Respect the 5-second rate limit for health checks
 		sleep(Duration::from_secs(5)).await;
 	}

@@ -21,11 +21,9 @@ impl InMemoryPaymentRouter {
 			processors:       Arc::new(RwLock::new(HashMap::new())),
 			default_breaker:
 				CircuitBreaker::<DefaultPolicy, PaymentProcessingError>::builder()
-					.policy(DefaultPolicy::new(0.5, 5, 5, 30000))
 					.build(),
 			fallback_breaker:
 				CircuitBreaker::<DefaultPolicy, PaymentProcessingError>::builder()
-					.policy(DefaultPolicy::new(0.5, 5, 5, 30000))
 					.build(),
 		}
 	}
