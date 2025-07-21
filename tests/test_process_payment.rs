@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use circuitbreaker_rs::{CircuitBreaker, DefaultPolicy};
+use circuitbreaker_rs::{CircuitBreaker, DefaultPolicy, State};
 use reqwest::Client;
 use rinha_de_backend::domain::payment::Payment;
 use rinha_de_backend::infrastructure::persistence::redis_payment_repository::RedisPaymentRepository;
@@ -36,14 +36,19 @@ async fn test_process_payment_success() {
 		processed_by:   None,
 	};
 
-	let circuit_breaker: CircuitBreaker<DefaultPolicy, PaymentProcessingError> =
+	let mut circuit_breaker: CircuitBreaker<DefaultPolicy, PaymentProcessingError> =
 		CircuitBreaker::<DefaultPolicy, PaymentProcessingError>::builder()
 			.failure_threshold(0.5)
 			.cooldown(Duration::from_secs(30))
 			.build();
 
 	let result = process_payment_use_case
-		.execute(payment, default_url, "default".to_string(), circuit_breaker)
+		.execute(
+			payment,
+			default_url,
+			"default".to_string(),
+			&mut circuit_breaker,
+		)
 		.await;
 
 	assert!(result.is_ok());
@@ -72,7 +77,7 @@ async fn test_process_payment_duplicate_returns_false() {
 		processed_by:   None,
 	};
 
-	let circuit_breaker: CircuitBreaker<DefaultPolicy, PaymentProcessingError> =
+	let mut circuit_breaker: CircuitBreaker<DefaultPolicy, PaymentProcessingError> =
 		CircuitBreaker::<DefaultPolicy, PaymentProcessingError>::builder()
 			.failure_threshold(0.5)
 			.cooldown(Duration::from_secs(30))
@@ -84,7 +89,7 @@ async fn test_process_payment_duplicate_returns_false() {
 			payment.clone(),
 			default_url.clone(),
 			"default".to_string(),
-			circuit_breaker.clone(),
+			&mut circuit_breaker,
 		)
 		.await;
 
@@ -93,7 +98,12 @@ async fn test_process_payment_duplicate_returns_false() {
 
 	// Second attempt with the same payment: should return false
 	let result2 = process_payment_use_case
-		.execute(payment, default_url, "default".to_string(), circuit_breaker)
+		.execute(
+			payment,
+			default_url,
+			"default".to_string(),
+			&mut circuit_breaker,
+		)
 		.await;
 
 	assert!(result2.is_ok());
@@ -123,7 +133,7 @@ async fn test_process_payment_500_returns_false() {
 		processed_by:   None,
 	};
 
-	let circuit_breaker: CircuitBreaker<DefaultPolicy, PaymentProcessingError> =
+	let mut circuit_breaker: CircuitBreaker<DefaultPolicy, PaymentProcessingError> =
 		CircuitBreaker::<DefaultPolicy, PaymentProcessingError>::builder()
 			.failure_threshold(0.5)
 			.cooldown(Duration::from_secs(30))
@@ -143,7 +153,12 @@ async fn test_process_payment_500_returns_false() {
 		.unwrap();
 
 	let result = process_payment_use_case
-		.execute(payment, default_url, "default".to_string(), circuit_breaker)
+		.execute(
+			payment,
+			default_url,
+			"default".to_string(),
+			&mut circuit_breaker,
+		)
 		.await;
 
 	assert!(result.is_err());
@@ -171,7 +186,7 @@ async fn test_process_payment_circuit_breaker_open_returns_false() {
 		processed_by:   None,
 	};
 
-	let circuit_breaker: CircuitBreaker<DefaultPolicy, PaymentProcessingError> =
+	let mut circuit_breaker: CircuitBreaker<DefaultPolicy, PaymentProcessingError> =
 		CircuitBreaker::<DefaultPolicy, PaymentProcessingError>::builder()
 			.failure_threshold(0.5)
 			.cooldown(Duration::from_secs(30))
@@ -181,9 +196,60 @@ async fn test_process_payment_circuit_breaker_open_returns_false() {
 	circuit_breaker.force_open();
 
 	let result = process_payment_use_case
-		.execute(payment, default_url, "default".to_string(), circuit_breaker)
+		.execute(
+			payment,
+			default_url,
+			"default".to_string(),
+			&mut circuit_breaker,
+		)
 		.await;
 
-	assert!(result.is_ok());
-	assert!(!result.unwrap());
+	assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_process_payment_unreachable_service_opens_circuit_breaker() {
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
+	let payment_repo = RedisPaymentRepository::new(redis_client.clone());
+	let http_client = Client::builder()
+		.timeout(Duration::from_millis(100))
+		.build()
+		.unwrap();
+	let process_payment_use_case =
+		ProcessPaymentUseCase::new(payment_repo.clone(), http_client.clone());
+
+	let payment = Payment {
+		correlation_id: Uuid::new_v4(),
+		amount:         100.0,
+		requested_at:   None,
+		processed_at:   None,
+		processed_by:   None,
+	};
+
+	let mut circuit_breaker: CircuitBreaker<DefaultPolicy, PaymentProcessingError> =
+		CircuitBreaker::<DefaultPolicy, PaymentProcessingError>::builder()
+			.failure_threshold(0.1)
+			.cooldown(Duration::from_secs(5))
+			.build();
+
+	// Use an unreachable URL
+	let unreachable_url = "http://localhost:12345".to_string();
+
+	for _ in 0..10 {
+		let result = process_payment_use_case
+			.execute(
+				payment.clone(),
+				unreachable_url.clone(),
+				"default".to_string(),
+				&mut circuit_breaker,
+			)
+			.await;
+		assert!(result.is_err());
+	}
+
+	tokio::time::sleep(Duration::from_secs(6)).await;
+
+	// Verify that the circuit breaker is open
+	assert_eq!(circuit_breaker.current_state(), State::Open);
 }

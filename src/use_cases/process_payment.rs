@@ -45,7 +45,7 @@ impl<R: PaymentRepository> ProcessPaymentUseCase<R> {
 		mut payment: Payment,
 		processor_url: String,
 		processed_by: String,
-		circuit_breaker: CircuitBreaker<DefaultPolicy, PaymentProcessingError>,
+		circuit_breaker: &mut CircuitBreaker<DefaultPolicy, PaymentProcessingError>,
 	) -> Result<bool, Box<dyn Error + Send>> {
 		payment.requested_at = Some(OffsetDateTime::now_utc());
 
@@ -58,7 +58,7 @@ impl<R: PaymentRepository> ProcessPaymentUseCase<R> {
 						.json(&payment)
 						.send()
 						.await
-						.map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+						.map_err(|e| PaymentProcessingError(e.to_string()))?;
 
 					if response.status().is_success() {
 						Ok(true)
@@ -91,7 +91,9 @@ impl<R: PaymentRepository> ProcessPaymentUseCase<R> {
 					Ok(true)
 				}
 			}
-			Err(BreakerError::Open) => Ok(false),
+			Err(BreakerError::Open) => Err(Box::new(PaymentProcessingError(
+				"Circuit breaker open".to_string(),
+			)) as Box<dyn Error + Send>),
 			Err(BreakerError::Operation(e)) => {
 				error!("Circuit breaker prevented execution: {e}");
 				Err(Box::new(e) as Box<dyn Error + Send>)

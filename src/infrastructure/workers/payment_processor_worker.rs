@@ -51,7 +51,7 @@ pub async fn payment_processing_worker<Q, PR, R>(
 
 		let mut processed = false;
 
-		if let Some((processor_url, processor_name, circuit_breaker)) =
+		if let Some((processor_url, processor_name, mut circuit_breaker)) =
 			router.get_processor_for_payment().await
 		{
 			if circuit_breaker.current_state() == State::Open {
@@ -70,7 +70,7 @@ pub async fn payment_processing_worker<Q, PR, R>(
 					payment.clone(),
 					processor_url,
 					processor_name,
-					circuit_breaker,
+					&mut circuit_breaker,
 				)
 				.await
 				.unwrap_or(false);
