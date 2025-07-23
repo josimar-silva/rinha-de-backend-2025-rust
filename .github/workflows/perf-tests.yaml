@@ -10,7 +10,11 @@ on:
 jobs:    
   performance-tests:
     runs-on: ubuntu-24.04
-   
+
+    permissions:
+      contents: write
+      packages: write
+
     steps:
       - name: 📦 Checkout code
         uses: actions/checkout@v4
@@ -56,13 +60,19 @@ jobs:
           PARTICIPANT: ${{ github.repository_owner }}
 
       - name: ⬇️ Tear Down Environment
-        run: docker compose down
+        run: docker compose --profile perf down
 
       - name: ⬆️ Upload Partial Results
         uses: actions/upload-artifact@v4
         with:
           name: partial-results-${{ github.sha }}.json
           path: rinha/participantes/${{ github.repository_owner }}/partial-results.json
+
+      - name: ⬆️ Upload k6 Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6_results.json
+          path: k6_results.json
 
       - name: ⬆️ Upload Flamegraph Artifact
         uses: actions/upload-artifact@v4
@@ -93,10 +103,10 @@ jobs:
 
           echo "| ${COMMIT_SHA::7} | ${TIMESTAMP} | ${ITERATIONS} | ${AVG_REQ_DURATION} | ${P95_REQ_DURATION} | ${P99_REQ_DURATION} | ${HTTP_FAIL_RATE} |" >> "$PERF_FILE"
 
-      - name: Commit Performance Results
-        run: |
-          git config user.name "radagastbot[bot]"
-          git config user.email "radagastbot[bot]@users.noreply.github.com"
-          git add perf.md
-          git commit -m "docs: Update performance test results for ${COMMIT_SHA::7}"
-          git push
+#      - name: Commit Performance Results
+#        run: |
+#          git config user.name "radagastbot[bot]"
+#          git config user.email "radagastbot[bot]@users.noreply.github.com"
+#          git add perf.md
+#          git commit -m "docs: Update performance test results for ${{ github.sha }}"
+#          git push
