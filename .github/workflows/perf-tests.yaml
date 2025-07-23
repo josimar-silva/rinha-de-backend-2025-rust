@@ -97,6 +97,6 @@ jobs:
         run: |
           git config user.name "radagastbot[bot]"
           git config user.email "radagastbot[bot]@users.noreply.github.com"
-          git add "$PERF_FILE"
+          git add perf.md
           git commit -m "docs: Update performance test results for ${COMMIT_SHA::7}"
           git push
