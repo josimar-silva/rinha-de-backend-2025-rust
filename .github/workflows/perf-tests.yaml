@@ -8,37 +8,95 @@ on:
     branches: [main]
 
 jobs:    
-  tests:
+  performance-tests:
     runs-on: ubuntu-24.04
    
     steps:
-      - name: Checkout code
+      - name: 📦 Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Checkout Rinha Repository
+
+      - name: 📦 Checkout Rinha Repository
         uses: actions/checkout@v4
         with:
           repository: zanfranceschi/rinha-de-backend-2025
           path: ./rinha
           submodules: recursive
-      - name: Set up Docker
+
+      - name: 🐳 Setup Docker
         uses: docker-practice/actions-setup-docker@master
-      - name: Setup Payment Processors
+
+      - name: 🛠️ Setup jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: 💰 Setup Payment Processors
         run: |
           pushd ./rinha/payment-processor > /dev/null
             docker compose up --build -d 1> /dev/null 2>&1
           popd > /dev/null
-      - name: Setup ${{ github.repository_owner }} Backend
+
+      - name: 🚀 Setup ${{ github.repository_owner }} Backend
         run: |
-          nohup docker compose up --build >> docker-compose.logs &
-      - name: Setup k6
+          mkdir -p reports
+          docker compose --profile perf up --build -d
+
+      - name: 🧪 Setup k6
         uses: grafana/setup-k6-action@v1
         with:
           k6-version: '1.1.0'
-      - name: Run Performance Tests
+
+      - name: 📈 Run Performance Tests
         run: |
-           k6 run rinha/rinha-test/rinha.js
+           mkdir -p rinha/participantes/$PARTICIPANT
+           touch rinha/participantes/$PARTICIPANT/partial-results.json
+           k6 run --out json=k6_results.json rinha/rinha-test/rinha.js
         env:
           MAX_REQUESTS: ${{ vars.MAX_REQUESTS }}
           PARTICIPANT: ${{ github.repository_owner }}
+
+      - name: ⬇️ Tear Down Environment
+        run: docker compose down
+
+      - name: ⬆️ Upload Partial Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: partial-results-${{ github.sha }}.json
+          path: rinha/participantes/${{ github.repository_owner }}/partial-results.json
+
+      - name: ⬆️ Upload Flamegraph Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flamegraph
+          path: reports/*.svg
+
+      - name: 📊 Process Performance Results
+        run: |
+          COMMIT_SHA="${{ github.sha }}"
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # Extract k6 metrics (adjust these based on what metrics you care about)
+          ITERATIONS=$(jq -r '.metrics.iterations.values.count' k6_results.json)
+          AVG_REQ_DURATION=$(jq -r '.metrics.http_req_duration.values.avg' k6_results.json)
+          P95_REQ_DURATION=$(jq -r '.metrics.http_req_duration.values."p(95)"' k6_results.json)
+          P99_REQ_DURATION=$(jq -r '.metrics.http_req_duration.values."p(99)"' k6_results.json)
+          HTTP_FAIL_RATE=$(jq -r '.metrics.http_req_failed.values.rate' k6_results.json)
+
+          # Create or append to perf.md
+          PERF_FILE="perf.md"
+          if [ ! -f "$PERF_FILE" ]; then
+            echo "# Performance Test Results" > "$PERF_FILE"
+            echo "" >> "$PERF_FILE"
+            echo "| Commit SHA | Timestamp | Iterations | Avg Req Duration (ms) | P95 Req Duration (ms) | P99 Req Duration (ms) | HTTP Fail Rate |" >> "$PERF_FILE"
+            echo "|------------|-----------|------------|-----------------------|-----------------------|-----------------------|----------------|" >> "$PERF_FILE"
+          fi
+
+          echo "| ${COMMIT_SHA::7} | ${TIMESTAMP} | ${ITERATIONS} | ${AVG_REQ_DURATION} | ${P95_REQ_DURATION} | ${P99_REQ_DURATION} | ${HTTP_FAIL_RATE} |" >> "$PERF_FILE"
+
+      - name: Commit Performance Results
+        run: |
+          git config user.name "radagastbot[bot]"
+          git config user.email "radagastbot[bot]@users.noreply.github.com"
+          git add "$PERF_FILE"
+          git commit -m "docs: Update performance test results for ${COMMIT_SHA::7}"
+          git push

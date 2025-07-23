@@ -24,9 +24,6 @@ services:
       - "9999:9999"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - backend-01
-      - backend-02
     networks:
       - backend
       - payment-processor 
@@ -40,11 +37,15 @@ services:
     <<: *backend-template
     image: ghcr.io/josimar-silva/rinha-de-backend-2025:latest
     hostname: backend-01
+    profiles:
+      - prod
 
   backend-02:
     <<: *backend-template
     image: ghcr.io/josimar-silva/rinha-de-backend-2025:latest
     hostname: backend-02
+    profiles:
+      - prod
 
   perf-backend-01:
     <<: *backend-template
@@ -52,6 +53,7 @@ services:
     hostname: backend-01
     profiles:
       - perf
+    stop_signal: SIGINT
 
   perf-backend-02:
     <<: *backend-template
@@ -59,6 +61,7 @@ services:
     hostname: backend-02
     profiles:
       - perf
+    stop_signal: SIGINT
 
   redis:
     image: redis:8.0.3-alpine
