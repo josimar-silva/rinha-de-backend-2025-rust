@@ -1,7 +1,7 @@
 ARG BUILD_VARIANT=prod
 
 FROM lukemathwalker/cargo-chef:0.1.72-rust-1.88-slim-trixie AS chef
-WORKDIR app
+WORKDIR /app
 
 FROM chef AS planner
 COPY . .
@@ -23,9 +23,9 @@ FROM prod_builder AS perf_builder
 RUN cargo build --release --locked --features perf
 COPY . .
 
-FROM ${BUILD_VARIANT}_builder as builder
+FROM ${BUILD_VARIANT}_builder AS builder
 
-FROM debian:trixie-slim as runner
+FROM debian:trixie-slim AS runner
 
 WORKDIR /app
 
