@@ -12,19 +12,19 @@ jobs:
     name: Check
     runs-on: ubuntu-24.04
     steps:
-      - name: Install toolchain
+      - name: 🛠️ Install toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Checkout
+      - name: 📦 Checkout
         uses: actions/checkout@v4
 
-      - name: Check
+      - name: ✅ Check
         uses: actions-rs/cargo@v1
         with:
           command: check
           args: --locked --verbose
 
-      - name: Check without default features
+      - name: ✅ Check without default features
         uses: actions-rs/cargo@v1
         with:
           command: check
@@ -34,18 +34,18 @@ jobs:
     name: Lints
     runs-on: ubuntu-24.04
     steps:
-      - name: Install toolchain
+      - name: 🛠️ Install toolchain
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: clippy
-      - name: Checkout
+      - name: 📦 Checkout
         uses: actions/checkout@v4
-      - name: Check the lints
+      - name: 🔍 Check the lints
         uses: actions-rs/cargo@v1
         with:
           command: clippy
           args: --tests --verbose -- -D warnings
-      - name: Check the pedantic lints
+      - name: 🔍 Check the pedantic lints
         uses: actions-rs/cargo@v1
         with:
           command: clippy
@@ -55,13 +55,13 @@ jobs:
     name: Formatting
     runs-on: ubuntu-24.04
     steps:
-      - name: Install toolchain
+      - name: 🛠️ Install toolchain
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
-      - name: Checkout
+      - name: 📦 Checkout
         uses: actions/checkout@v4
-      - name: Check the formatting
+      - name: 📝 Check the formatting
         uses: actions-rs/cargo@v1
         with:
           command: fmt
@@ -71,56 +71,56 @@ jobs:
     name: Test 
     runs-on: ubuntu-24.04
     steps:
-      - name: Install Rust toolchain
+      - name: 🛠️ Install Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
         with:
           components: clippy
 
-      - name: Checkout
+      - name: 📦 Checkout
         if: github.event_name != 'pull_request'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Checkout
+      - name: 📦 Checkout
         if: github.event_name == 'pull_request'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Setup cargo-tarpaulin
+      - name: ⚙️ Setup cargo-tarpaulin
         uses: taiki-e/install-action@cargo-tarpaulin
 
-      - name: Cache Rust dependencies
+      - name: 💾 Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Set up Docker
+      - name: 🐳 Set up Docker
         uses: docker-practice/actions-setup-docker@master
         with:
           docker-version: '20.10.7' 
 
-      - name: Run tests 
+      - name: 🧪 Run tests 
         run: |
           cargo tarpaulin --out Lcov --all-features \
             -- --skip "repo::test::git_upstream_remote"
         env:
           RUST_LOG: info
 
-      - name: Generate clippy report
+      - name: 📊 Generate clippy report
         run: |
           cargo clippy --message-format json > clippy-report.json
         env:
           RUST_LOG: info
 
-      - name: Cache SonarCloud packages
+      - name: 💾 Cache SonarCloud packages
         uses: actions/cache@v4
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-sonar
 
-      - name: SonarCloud Scan
+      - name: 🔎 SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@v5
         with:
           projectBaseDir: .
