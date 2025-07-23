@@ -21,7 +21,7 @@ async fn main() -> std::io::Result<()> {
 	if let Ok(report) = guard.report().build() {
 		if let Some(report_url) = &config.report_url {
 			let path = format!("{report_url}/flamegraph.svg");
-			let mut file = std::fs::File::create(&path).unwrap();
+			let mut file = std::fs::File::create(&path)?;
 			let mut options = Options::default();
 			options.title = "rinha-de-backend".to_string();
 			options.count_name = "samples".to_string();
