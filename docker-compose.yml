@@ -10,6 +10,7 @@ x-backend-template: &backend-template
     - APP_FALLBACK_PAYMENT_PROCESSOR_URL=http://payment-processor-fallback:8080
     - APP_REDIS_URL=redis://redis:6379
     - APP_SERVER_KEEPALIVE=200
+    - APP_REPORT_URL=/app/reports
   deploy:
     resources:
       limits:
@@ -54,6 +55,8 @@ services:
     profiles:
       - perf
     stop_signal: SIGINT
+    volumes:
+      - ./reports:/app/reports
 
   perf-backend-02:
     <<: *backend-template
@@ -62,6 +65,8 @@ services:
     profiles:
       - perf
     stop_signal: SIGINT
+    volumes:
+      - ./reports:/app/reports
 
   redis:
     image: redis:8.0.3-alpine
