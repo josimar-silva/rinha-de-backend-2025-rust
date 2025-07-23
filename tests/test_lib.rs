@@ -12,6 +12,7 @@ async fn test_run_bind_error() {
 		default_payment_processor_url: "http://localhost:8080".to_string(),
 		fallback_payment_processor_url: "http://localhost:8081".to_string(),
 		server_keepalive: 60,
+		report_url: None,
 	});
 
 	assert!(rinha_de_backend::run(dummy_config).await.is_err());
