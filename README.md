@@ -26,6 +26,10 @@
   <a href="https://github.com/josimar-silva/rinha-de-backend-2025/actions/workflows/cd.yaml">
     <img src="https://github.com/josimar-silva/rinha-de-backend-2025/actions/workflows/cd.yaml/badge.svg" alt="cd" />
   </a>
+  <!-- performance -->
+  <a href="https://github.com/josimar-silva/rinha-de-backend-2025/actions/workflows/perf-tests.yaml">
+    <img src="https://github.com/josimar-silva/rinha-de-backend-2025/actions/workflows/perf-tests.yaml/badge.svg" alt="perf" />
+  </a>
 </div>
 
 <div align="center">
