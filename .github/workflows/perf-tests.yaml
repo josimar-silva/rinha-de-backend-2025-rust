@@ -52,12 +52,10 @@ jobs:
 
       - name: 📈 Run Performance Tests
         run: |
-           mkdir -p rinha/participantes/$PARTICIPANT
-           touch rinha/participantes/$PARTICIPANT/partial-results.json
+           touch rinha/rinha-test/partial-results.json
            k6 run --out json=k6_results.json rinha/rinha-test/rinha.js
         env:
           MAX_REQUESTS: ${{ vars.MAX_REQUESTS }}
-          PARTICIPANT: ${{ github.repository_owner }}
 
       - name: ⬇️ Tear Down Environment
         run: docker compose --profile perf down
@@ -66,13 +64,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: partial-results-${{ github.sha }}.json
-          path: rinha/participantes/${{ github.repository_owner }}/partial-results.json
-
-      - name: ⬆️ Upload k6 Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: k6_results.json
-          path: k6_results.json
+          path: rinha/rinha-test/partial-results.json
 
       - name: ⬆️ Upload Flamegraph Artifact
         uses: actions/upload-artifact@v4
