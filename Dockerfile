@@ -1,3 +1,5 @@
+ARG BUILD_VARIANT=prod
+
 FROM lukemathwalker/cargo-chef:0.1.72-rust-1.88-slim-trixie AS chef
 WORKDIR app
 
@@ -5,7 +7,7 @@ FROM chef AS planner
 COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
-FROM chef AS builder
+FROM chef AS prod_builder
 
 COPY --from=planner /app/recipe.json recipe.json
 
@@ -16,15 +18,16 @@ COPY . .
 
 RUN cargo build --release --locked --no-default-features
 
+FROM prod_builder AS perf_builder
+
+RUN cargo build --release --locked --features perf
+COPY . .
+
+FROM ${BUILD_VARIANT}_builder as builder
+
 FROM debian:trixie-slim as runner
 
 WORKDIR /app
-
-# Install profiling tools
-RUN apt-get update && apt-get install -y \
-    linux-perf \
-    procps \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/rinha-de-backend .
 

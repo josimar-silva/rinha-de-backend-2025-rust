@@ -1,4 +1,20 @@
-version: '3.8'
+
+x-backend-template: &backend-template
+  depends_on:
+    - redis
+  networks:
+    - backend
+    - payment-processor
+  environment:
+    - APP_DEFAULT_PAYMENT_PROCESSOR_URL=http://payment-processor-default:8080
+    - APP_FALLBACK_PAYMENT_PROCESSOR_URL=http://payment-processor-fallback:8080
+    - APP_REDIS_URL=redis://redis:6379
+    - APP_SERVER_KEEPALIVE=200
+  deploy:
+    resources:
+      limits:
+        cpus: "0.55"
+        memory: "30MB"
 
 services:
   nginx:
@@ -21,48 +37,28 @@ services:
           memory: "20MB"
 
   backend-01:
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
+    <<: *backend-template
     image: ghcr.io/josimar-silva/rinha-de-backend-2025:latest
     hostname: backend-01
-    depends_on:
-      - redis
-    networks:
-      - backend
-      - payment-processor
-    environment:
-      - APP_DEFAULT_PAYMENT_PROCESSOR_URL=http://payment-processor-default:8080
-      - APP_FALLBACK_PAYMENT_PROCESSOR_URL=http://payment-processor-fallback:8080
-      - APP_REDIS_URL=redis://redis:6379
-      - APP_SERVER_KEEPALIVE=200
-    deploy:
-      resources:
-        limits:
-          cpus: "0.55"
-          memory: "30MB"
 
   backend-02:
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
+    <<: *backend-template
     image: ghcr.io/josimar-silva/rinha-de-backend-2025:latest
     hostname: backend-02
-    depends_on:
-      - redis
-    networks:
-      - backend
-      - payment-processor
-    environment:
-      - APP_DEFAULT_PAYMENT_PROCESSOR_URL=http://payment-processor-default:8080
-      - APP_FALLBACK_PAYMENT_PROCESSOR_URL=http://payment-processor-fallback:8080
-      - APP_REDIS_URL=redis://redis:6379
-      - APP_SERVER_KEEPALIVE=200
-    deploy:
-      resources:
-        limits:
-          cpus: "0.55"
-          memory: "30MB"
+
+  perf-backend-01:
+    <<: *backend-template
+    image: ghcr.io/josimar-silva/rinha-de-backend-2025/perf:0.1.1-snapshot
+    hostname: backend-01
+    profiles:
+      - perf
+
+  perf-backend-02:
+    <<: *backend-template
+    image: ghcr.io/josimar-silva/rinha-de-backend-2025/perf:0.1.1-snapshot
+    hostname: backend-02
+    profiles:
+      - perf
 
   redis:
     image: redis:8.0.3-alpine

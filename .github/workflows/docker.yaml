@@ -54,12 +54,25 @@ jobs:
             echo "IS_SNAPSHOT=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Build and push image
+      - name: Build and push production image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
+          build-args: |
+            BUILD_VARIANT=prod
           tags: |
             ghcr.io/${{ github.repository }}:${{ steps.get_version.outputs.VERSION }}
             ${{ steps.check_snapshot.outputs.IS_SNAPSHOT == 'false' && format('ghcr.io/{0}:latest', github.repository) || '' }}
+
+      - name: Build and push performance tests image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          build-args: |
+            BUILD_VARIANT=perf
+          tags: |
+            ghcr.io/${{ github.repository }}/perf:${{ steps.get_version.outputs.VERSION }}
