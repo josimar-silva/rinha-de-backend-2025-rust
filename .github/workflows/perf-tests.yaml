@@ -36,14 +36,12 @@ jobs:
 
       - name: 💰 Setup Payment Processors
         run: |
-          pushd ./rinha/payment-processor > /dev/null
-            docker compose up --build -d 1> /dev/null 2>&1
-          popd > /dev/null
+          docker compose -f ./rinha/payment-processor/docker-compose.yml up --build -d 1> /dev/null 2>&1
 
       - name: 🚀 Setup ${{ github.repository_owner }} Backend
         run: |
           mkdir -p reports
-          docker compose --profile perf up --build -d
+          docker compose --profile perf up --build -d 1> /dev/null 2>&1
 
       - name: 🧪 Setup k6
         uses: grafana/setup-k6-action@v1
@@ -52,19 +50,19 @@ jobs:
 
       - name: 📈 Run Performance Tests
         run: |
-           touch rinha/rinha-test/partial-results.json
            k6 run --out json=k6_results.json rinha/rinha-test/rinha.js
         env:
           MAX_REQUESTS: ${{ vars.MAX_REQUESTS }}
+          PARTICIPANT: ${{ github.repository_owner }}
 
       - name: ⬇️ Tear Down Environment
-        run: docker compose --profile perf down
+        run: docker compose --profile perf stop
 
       - name: ⬆️ Upload Partial Results
         uses: actions/upload-artifact@v4
         with:
           name: partial-results-${{ github.sha }}.json
-          path: rinha/rinha-test/partial-results.json
+          path: ./rinha/participantes/${{ github.repository_owner }}/partial-results.json
 
       - name: ⬆️ Upload Flamegraph Artifact
         uses: actions/upload-artifact@v4
