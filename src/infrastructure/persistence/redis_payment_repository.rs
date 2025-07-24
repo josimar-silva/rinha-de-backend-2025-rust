@@ -17,7 +17,7 @@ impl RedisPaymentRepository {
 		Self { client }
 	}
 
-	async fn payments_summary_lua(
+	async fn calculate_payments_summary_using_lua(
 		con: &mut redis::aio::MultiplexedConnection,
 		group: &str,
 		from_ts: i128,
@@ -75,11 +75,7 @@ impl PaymentRepository for RedisPaymentRepository {
 
 		redis::pipe()
 			.atomic()
-			.hset(
-				&payment_key,
-				"amount",
-				format!("{:2}", payment.amount.to_string()),
-			)
+			.hset(&payment_key, "amount", format!("{:.2}", payment.amount))
 			.hset_multiple(&payment_key, &[
 				(
 					"requested_at",
@@ -125,7 +121,7 @@ impl PaymentRepository for RedisPaymentRepository {
 			.get_multiplexed_async_connection()
 			.await
 			.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
-		let (req, amt) = Self::payments_summary_lua(
+		let (req, amt) = Self::calculate_payments_summary_using_lua(
 			&mut con,
 			group,
 			from_ts.unix_timestamp_nanos(),
