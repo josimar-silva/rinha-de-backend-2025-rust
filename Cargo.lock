@@ -2427,7 +2427,7 @@ dependencies = [
 
 [[package]]
 name = "rinha-de-backend"
-version = "0.1.1-snapshot"
+version = "0.1.2-snapshot"
 dependencies = [
  "actix-web",
  "async-trait",
@@ -2435,6 +2435,7 @@ dependencies = [
  "config",
  "derive_more",
  "env_logger",
+ "futures",
  "log",
  "pprof",
  "redis",

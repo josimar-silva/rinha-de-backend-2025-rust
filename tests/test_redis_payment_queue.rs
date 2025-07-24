@@ -1,7 +1,11 @@
+use std::sync::Arc;
+use std::time::Duration;
+
 use rinha_de_backend::domain::payment::Payment;
 use rinha_de_backend::domain::queue::{Message, Queue};
 use rinha_de_backend::infrastructure::config::redis::PAYMENTS_QUEUE_KEY;
 use rinha_de_backend::infrastructure::queue::redis_payment_queue::PaymentQueue;
+use tokio::sync::mpsc;
 use uuid::Uuid;
 
 mod support;
@@ -103,4 +107,61 @@ async fn test_payment_queue_fault_tolerance() {
 
 	let popped_message = payment_queue.pop().await;
 	assert!(popped_message.is_err());
+}
+
+#[tokio::test]
+async fn test_payment_queue_under_load() {
+	// Arrange
+	let redis = get_test_redis_client().await;
+	let payment_queue = Arc::new(PaymentQueue::new(redis.client.clone()));
+
+	const NUM_PAYMENTS: usize = 10000;
+	const NUM_WORKERS: usize = 4;
+
+	let (tx, mut rx) = mpsc::channel(NUM_PAYMENTS);
+
+	// Push payments to the queue
+	for i in 0..NUM_PAYMENTS {
+		let payment = Payment {
+			correlation_id: Uuid::new_v4(),
+			amount:         (i + 1) as f64,
+			requested_at:   None,
+			processed_at:   None,
+			processed_by:   None,
+		};
+		payment_queue
+			.push(Message::with(Uuid::new_v4(), payment))
+			.await
+			.unwrap();
+	}
+
+	// Act
+	// Spawn workers to process payments
+	for _ in 0..NUM_WORKERS {
+		let queue = Arc::clone(&payment_queue);
+		let tx = tx.clone();
+		tokio::spawn(async move {
+			while let Ok(Some(message)) = queue.pop().await {
+				if tx.send(message).await.is_err() {
+					break;
+				}
+			}
+		});
+	}
+
+	// Assert
+	// Collect results
+	let mut processed_payments = Vec::new();
+	for _ in 0..NUM_PAYMENTS {
+		match tokio::time::timeout(Duration::from_secs(5), rx.recv()).await {
+			Ok(Some(payment)) => processed_payments.push(payment),
+			_ => break,
+		}
+	}
+
+	assert_eq!(
+		processed_payments.len(),
+		NUM_PAYMENTS,
+		"All payments should be processed"
+	);
 }

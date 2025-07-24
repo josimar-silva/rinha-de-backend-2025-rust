@@ -23,6 +23,7 @@ impl Queue<Payment> for PaymentQueue {
 	) -> Result<Option<Message<Payment>>, Box<dyn std::error::Error + Send>> {
 		let mut con = self
 			.client
+			.clone()
 			.get_multiplexed_async_connection()
 			.await
 			.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
@@ -32,14 +33,14 @@ impl Queue<Payment> for PaymentQueue {
 			.await
 			.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
 
-		let message_str =
+		let message_json =
 			if let Some((_queue_name, serialized_message)) = popped_value {
 				serialized_message
 			} else {
 				return Ok(None);
 			};
 
-		let message: Message<Payment> = serde_json::from_str(&message_str)
+		let message: Message<Payment> = serde_json::from_str(&message_json)
 			.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
 
 		Ok(Some(message))

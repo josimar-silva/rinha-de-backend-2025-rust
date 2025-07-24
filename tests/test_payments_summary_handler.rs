@@ -1,6 +1,9 @@
 use std::ops::{Add, Sub};
+use std::sync::Arc;
+use std::time::Duration;
 
 use actix_web::{App, test, web};
+use futures::future::join_all;
 use rinha_de_backend::adapters::web::handlers::payments_summary;
 use rinha_de_backend::domain::payment::Payment;
 use rinha_de_backend::domain::repository::PaymentRepository;
@@ -8,6 +11,7 @@ use rinha_de_backend::infrastructure::persistence::redis_payment_repository::Red
 use rinha_de_backend::use_cases::dto::PaymentsSummaryResponse;
 use rinha_de_backend::use_cases::get_payment_summary::GetPaymentSummaryUseCase;
 use time::OffsetDateTime;
+use tokio::time::timeout;
 use uuid::Uuid;
 
 mod support;
@@ -276,4 +280,62 @@ async fn test_payments_summary_get_with_extended_iso_8601() {
 	assert_eq!(summary.default.total_amount, 1000.23);
 	assert_eq!(summary.fallback.total_requests, 0);
 	assert_eq!(summary.fallback.total_amount, 0.0);
+}
+
+#[actix_web::test]
+async fn test_redis_repository_concurrent_access() {
+	let redis_container = get_test_redis_client().await;
+	let redis_client = redis_container.client.clone();
+	let payment_repo = Arc::new(RedisPaymentRepository::new(redis_client.clone()));
+
+	const NUM_CONCURRENT_TASKS: usize = 50;
+	const NUM_ITERATIONS_PER_TASK: usize = 100;
+
+	let mut tasks = Vec::new();
+
+	for _ in 0..NUM_CONCURRENT_TASKS {
+		let repo = Arc::clone(&payment_repo);
+		tasks.push(tokio::spawn(async move {
+			for i in 0..NUM_ITERATIONS_PER_TASK {
+				let from =
+					OffsetDateTime::now_utc().sub(time::Duration::days(i as i64));
+				let to =
+					OffsetDateTime::now_utc().add(time::Duration::days(i as i64));
+
+				// Call get_summary_by_group
+				let result_summary =
+					repo.get_summary_by_group("default", from, to).await;
+				assert!(
+					result_summary.is_ok(),
+					"get_summary_by_group failed: {:?}",
+					result_summary.err()
+				);
+
+				// Call is_already_processed
+				let payment_id = Uuid::new_v4().to_string();
+				let result_processed = repo.is_already_processed(&payment_id).await;
+				assert!(
+					result_processed.is_ok(),
+					"is_already_processed failed: {:?}",
+					result_processed.err()
+				);
+			}
+		}));
+	}
+
+	let results = timeout(
+		Duration::from_secs(60), /* Increased timeout for potentially blocking
+		                          * operations */
+		join_all(tasks),
+	)
+	.await;
+
+	assert!(
+		results.is_ok(),
+		"Concurrent access test timed out or failed: {:?}",
+		results.err()
+	);
+	for res in results.unwrap() {
+		assert!(res.is_ok(), "A spawned task panicked: {:?}", res.err());
+	}
 }

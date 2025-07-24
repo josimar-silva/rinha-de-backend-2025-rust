@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use redis::{AsyncCommands, Client, Commands, Script};
+use redis::{AsyncCommands, Client, Script};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
@@ -17,8 +17,8 @@ impl RedisPaymentRepository {
 		Self { client }
 	}
 
-	fn payments_summary_lua(
-		conn: &mut redis::Connection,
+	async fn payments_summary_lua(
+		con: &mut redis::aio::MultiplexedConnection,
 		group: &str,
 		from_ts: i128,
 		to_ts: i128,
@@ -47,7 +47,8 @@ impl RedisPaymentRepository {
 			.arg(from_ts)
 			.arg(to_ts)
 			.arg(format!("payment_summary:{group}"))
-			.invoke(conn)?;
+			.invoke_async(con)
+			.await?;
 
 		Ok((
 			response.0.parse().unwrap_or_default(),
@@ -120,7 +121,9 @@ impl PaymentRepository for RedisPaymentRepository {
 	) -> Result<(usize, f64), Box<dyn std::error::Error + Send>> {
 		let mut con = self
 			.client
-			.get_connection()
+			.clone()
+			.get_multiplexed_async_connection()
+			.await
 			.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
 		let (req, amt) = Self::payments_summary_lua(
 			&mut con,
@@ -128,6 +131,7 @@ impl PaymentRepository for RedisPaymentRepository {
 			from_ts.unix_timestamp_nanos(),
 			to_ts.unix_timestamp_nanos(),
 		)
+		.await
 		.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
 		Ok((req, amt))
 	}
@@ -137,7 +141,6 @@ impl PaymentRepository for RedisPaymentRepository {
 		group: &str,
 		payment_id: &str,
 	) -> Result<Payment, Box<dyn std::error::Error + Send>> {
-		use redis::AsyncCommands;
 		let mut con = self
 			.client
 			.get_multiplexed_async_connection()
@@ -184,12 +187,15 @@ impl PaymentRepository for RedisPaymentRepository {
 	) -> Result<bool, Box<dyn std::error::Error + Send>> {
 		let mut con = self
 			.client
-			.get_connection()
+			.clone()
+			.get_multiplexed_async_connection()
+			.await
 			.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
 
 		let is_already_processed: Option<f64> = con
 			.zscore(PROCESSED_PAYMENTS_SET_KEY, payment_id)
-			.unwrap_or(None);
+			.await
+			.ok();
 
 		Ok(is_already_processed.is_some())
 	}
@@ -211,7 +217,6 @@ impl PaymentRepository for RedisPaymentRepository {
 			.await
 			.map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send>)?;
 
-		// Delete the processed payments sorted set
 		let _: () = con
 			.del(PROCESSED_PAYMENTS_SET_KEY)
 			.await
