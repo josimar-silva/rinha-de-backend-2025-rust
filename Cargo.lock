@@ -2427,7 +2427,7 @@ dependencies = [
 
 [[package]]
 name = "rinha-de-backend"
-version = "0.1.2-snapshot"
+version = "0.2.0"
 dependencies = [
  "actix-web",
  "async-trait",
