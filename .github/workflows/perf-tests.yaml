@@ -103,7 +103,6 @@ jobs:
             echo "|--------|-----------|----------|------------------|-----------------|-----|-------|" >> "$PERF_FILE"
           fi
 
-          echo "" >> "$PERF_FILE"  
           echo "| [${COMMIT_SHA::7}](${COMMIT_URL}) | ${TIMESTAMP} | ${P99} | ${SUCCESSFUL_REQUESTS} | ${FAILED_REQUESTS} | ${LAG} | ${SCORE} |" >> "$PERF_FILE"
           
           echo "Data added to $PERF_FILE"
