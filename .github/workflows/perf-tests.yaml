@@ -11,6 +11,9 @@ jobs:
   performance-tests:
     runs-on: ubuntu-24.04
 
+    env:
+      RESULTS_FILE_PATH: rinha/participantes/${{ github.repository_owner }}/partial-results.json
+
     permissions:
       contents: write
       packages: write
@@ -28,75 +31,89 @@ jobs:
           path: ./rinha
           submodules: recursive
 
-      - name: 🐳 Setup Docker
-        uses: docker-practice/actions-setup-docker@master
+      - name: 🐳 Setup Docker Compose
+        uses: docker/setup-compose-action@v1
 
       - name: 🛠️ Setup jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: 💰 Setup Payment Processors
-        run: |
-          docker compose -f ./rinha/payment-processor/docker-compose.yml up --build -d 1> /dev/null 2>&1
-
-      - name: 🚀 Setup ${{ github.repository_owner }} Backend
-        run: |
-          mkdir -p reports
-          docker compose --profile perf up --build -d 1> /dev/null 2>&1
+        run: sudo apt-get install -y jq
 
       - name: 🧪 Setup k6
         uses: grafana/setup-k6-action@v1
         with:
           k6-version: '1.1.0'
 
+      - name: 💰 Setup Payment Processors
+        run: |
+          pushd rinha/payment-processor/ > /dev/null
+            docker compose up --build -d 1> /dev/null 2>&1
+          popd > /dev/null
+
+      - name: 🚀 Setup ${{ github.repository_owner }} Backend
+        run: |
+          docker compose --profile prod up --build -d 1> /dev/null 2>&1    
+
+      - name: 🔍 Check running containers
+        run: |         
+          docker ps
+
       - name: 📈 Run Performance Tests
         run: |
-           k6 run --out json=k6_results.json rinha/rinha-test/rinha.js
+          mkdir -p rinha/participantes/${{ github.repository_owner }}
+          touch ${{ env.RESULTS_FILE_PATH }}
+          pushd rinha/rinha-test > /dev/null
+            k6 run --out json=${{ github.workspace }}/k6_results.json rinha.js
+          popd > /dev/null
         env:
           MAX_REQUESTS: ${{ vars.MAX_REQUESTS }}
           PARTICIPANT: ${{ github.repository_owner }}
 
       - name: ⬇️ Tear Down Environment
-        run: docker compose --profile perf stop
+        run: |
+          echo "Containers Still running:"
+          docker ps
+          echo "Stopping containers..."
+          docker compose --profile prod stop --timeout 30
 
       - name: ⬆️ Upload Partial Results
         uses: actions/upload-artifact@v4
         with:
           name: partial-results-${{ github.sha }}.json
-          path: ./rinha/participantes/${{ github.repository_owner }}/partial-results.json
-
-      - name: ⬆️ Upload Flamegraph Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: flamegraph
-          path: reports/*.svg
+          path: ${{ env.RESULTS_FILE_PATH }}
 
       - name: 📊 Process Performance Results
         run: |
+          PERF_FILE="perf.md"
           COMMIT_SHA="${{ github.sha }}"
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # Extract k6 metrics (adjust these based on what metrics you care about)
-          ITERATIONS=$(jq -r '.metrics.iterations.values.count' k6_results.json)
-          AVG_REQ_DURATION=$(jq -r '.metrics.http_req_duration.values.avg' k6_results.json)
-          P95_REQ_DURATION=$(jq -r '.metrics.http_req_duration.values."p(95)"' k6_results.json)
-          P99_REQ_DURATION=$(jq -r '.metrics.http_req_duration.values."p(99)"' k6_results.json)
-          HTTP_FAIL_RATE=$(jq -r '.metrics.http_req_failed.values.rate' k6_results.json)
+          echo "Extracting metrics from $RESULTS_FILE_PATH"
+          P99=$(jq -r '.p99.valor' $RESULTS_FILE_PATH)
+          SUCCESSFUL_REQUESTS=$(jq -r '.pagamentos_solicitados.qtd_sucesso' $RESULTS_FILE_PATH)
+          FAILED_REQUESTS=$(jq -r '.pagamentos_solicitados.qtd_falha' $RESULTS_FILE_PATH)
+          LAG=$(jq -r '.lag.lag' $RESULTS_FILE_PATH)
+          SCORE=$(jq -r '.total_liquido' $RESULTS_FILE_PATH)
+          COMMIT_URL="https://github.com/${{ github.repository }}/commit/${COMMIT_SHA}"
 
-          # Create or append to perf.md
-          PERF_FILE="perf.md"
+          echo "Creating or appending data to perf.md"
+          
           if [ ! -f "$PERF_FILE" ]; then
             echo "# Performance Test Results" > "$PERF_FILE"
             echo "" >> "$PERF_FILE"
-            echo "| Commit SHA | Timestamp | Iterations | Avg Req Duration (ms) | P95 Req Duration (ms) | P99 Req Duration (ms) | HTTP Fail Rate |" >> "$PERF_FILE"
-            echo "|------------|-----------|------------|-----------------------|-----------------------|-----------------------|----------------|" >> "$PERF_FILE"
+            echo "| Commit | Timestamp | P99 (ms) | Success Requests | Failed Requests | Lag | Score |" >> "$PERF_FILE"
+            echo "|--------|-----------|----------|------------------|-----------------|-----|-------|" >> "$PERF_FILE"
           fi
 
-          echo "| ${COMMIT_SHA::7} | ${TIMESTAMP} | ${ITERATIONS} | ${AVG_REQ_DURATION} | ${P95_REQ_DURATION} | ${P99_REQ_DURATION} | ${HTTP_FAIL_RATE} |" >> "$PERF_FILE"
+          echo "" >> "$PERF_FILE"  
+          echo "| [${COMMIT_SHA::7}](${COMMIT_URL}) | ${TIMESTAMP} | ${P99} | ${SUCCESSFUL_REQUESTS} | ${FAILED_REQUESTS} | ${LAG} | ${SCORE} |" >> "$PERF_FILE"
+          
+          echo "Data added to $PERF_FILE"
+          cat "$PERF_FILE"
 
-#      - name: Commit Performance Results
-#        run: |
-#          git config user.name "radagastbot[bot]"
-#          git config user.email "radagastbot[bot]@users.noreply.github.com"
-#          git add perf.md
-#          git commit -m "docs: Update performance test results for ${{ github.sha }}"
-#          git push
+      - name: 📤 Commit Performance Results
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "radagastbot[bot]"
+          git config user.email "radagastbot[bot]@users.noreply.github.com"
+          git add perf.md
+          git commit -m "docs(performance): Update performance test results for ${{ github.sha }}"
+          git push
