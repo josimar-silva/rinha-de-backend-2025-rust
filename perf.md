@@ -12,5 +12,5 @@ Process payment with a P99 of 5ms
 
 # Performance Tests Results
 
-| Commit SHA | Timestamp | Iterations | Avg Req Duration (ms) | P95 Req Duration (ms) | P99 Req Duration (ms) | HTTP Fail Rate |
-|------------|-----------|------------|-----------------------|-----------------------|-----------------------|----------------|
+| Commit SHA | Timestamp | P99 (ms) | Success Requests | Failed Requests | Lag | Score |
+|------------|-----------|----------|------------------|-----------------|-----|-------|
