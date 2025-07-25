@@ -50,7 +50,7 @@ services:
 
   perf-backend-01:
     <<: *backend-template
-    image: ghcr.io/josimar-silva/rinha-de-backend-2025/perf:0.1.1-snapshot
+    image: ghcr.io/josimar-silva/rinha-de-backend-2025/perf:0.2.1-snapshot
     hostname: backend-01
     profiles:
       - perf
@@ -60,7 +60,7 @@ services:
 
   perf-backend-02:
     <<: *backend-template
-    image: ghcr.io/josimar-silva/rinha-de-backend-2025/perf:0.1.1-snapshot
+    image: ghcr.io/josimar-silva/rinha-de-backend-2025/perf:0.2.1-snapshot
     hostname: backend-02
     profiles:
       - perf
