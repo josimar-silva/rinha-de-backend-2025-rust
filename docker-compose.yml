@@ -10,17 +10,21 @@ x-backend-template: &backend-template
     - APP_FALLBACK_PAYMENT_PROCESSOR_URL=http://payment-processor-fallback:8080
     - APP_REDIS_URL=redis://redis:6379
     - APP_SERVER_KEEPALIVE=200
-    - APP_REPORT_URL=/app/reports
   deploy:
     resources:
       limits:
-        cpus: "0.55"
-        memory: "30MB"
+        cpus: "0.50"
+        memory: "100MB"
 
 services:
   nginx:
     image: nginx:latest
     hostname: nginx
+    profiles:
+      - prod
+    depends_on:
+      - backend-01
+      - backend-02
     ports:
       - "9999:9999"
     volumes:
@@ -31,8 +35,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.15"
-          memory: "20MB"
+          cpus: "0.25"
+          memory: "100MB"
 
   backend-01:
     <<: *backend-template
@@ -47,26 +51,6 @@ services:
     hostname: backend-02
     profiles:
       - prod
-
-  perf-backend-01:
-    <<: *backend-template
-    image: ghcr.io/josimar-silva/rinha-de-backend-2025/perf:0.2.1-snapshot
-    hostname: backend-01
-    profiles:
-      - perf
-    stop_signal: SIGINT
-    volumes:
-      - ./reports:/app/reports
-
-  perf-backend-02:
-    <<: *backend-template
-    image: ghcr.io/josimar-silva/rinha-de-backend-2025/perf:0.2.1-snapshot
-    hostname: backend-02
-    profiles:
-      - perf
-    stop_signal: SIGINT
-    volumes:
-      - ./reports:/app/reports
 
   redis:
     image: redis:8.0.3-alpine
@@ -85,7 +69,7 @@ services:
       resources:
         limits:
           cpus: "0.25"
-          memory: "275MB"
+          memory: "50MB"
 
 networks:
   backend:
