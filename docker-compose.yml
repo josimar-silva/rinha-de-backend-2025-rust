@@ -10,33 +10,38 @@ x-backend-template: &backend-template
     - APP_FALLBACK_PAYMENT_PROCESSOR_URL=http://payment-processor-fallback:8080
     - APP_REDIS_URL=redis://redis:6379
     - APP_SERVER_KEEPALIVE=200
+    - APP_REPORT_URL=/app/reports
   deploy:
     resources:
       limits:
         cpus: "0.50"
         memory: "100MB"
 
+x-nginx-template: &nginx-template
+  image: nginx:latest
+  hostname: nginx
+  profiles:
+    - prod
+    - perf
+  ports:
+    - "9999:9999"
+  volumes:
+    - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  networks:
+    - backend
+    - payment-processor
+  deploy:
+    resources:
+      limits:
+        cpus: "0.25"
+        memory: "100MB"
+
 services:
   nginx:
-    image: nginx:latest
-    hostname: nginx
-    profiles:
-      - prod
+    <<: *nginx-template
     depends_on:
       - backend-01
       - backend-02
-    ports:
-      - "9999:9999"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    networks:
-      - backend
-      - payment-processor 
-    deploy:
-      resources:
-        limits:
-          cpus: "0.25"
-          memory: "100MB"
 
   backend-01:
     <<: *backend-template
@@ -52,10 +57,39 @@ services:
     profiles:
       - prod
 
+  perf-nginx:
+    <<: *nginx-template
+    depends_on:
+      - perf-backend-01
+      - perf-backend-02
+
+  perf-backend-01:
+    <<: *backend-template
+    image: ghcr.io/josimar-silva/rinha-de-backend-2025:0.2.1-snapshot
+    hostname: backend-01
+    profiles:
+      - perf
+    stop_signal: SIGINT
+    volumes:
+      - ./reports:/app/reports
+
+  perf-backend-02:
+    <<: *backend-template
+    image: ghcr.io/josimar-silva/rinha-de-backend-2025:0.2.1-snapshot
+    hostname: backend-02
+    profiles:
+      - perf
+    stop_signal: SIGINT
+    volumes:
+      - ./reports:/app/reports
+
   redis:
     image: redis:8.0.3-alpine
     hostname: redis
     command: redis-server --save "" --appendonly no --maxclients 20000
+    profiles:
+      - prod
+      - perf
     ports:
       - "6379:6379"
     networks:
