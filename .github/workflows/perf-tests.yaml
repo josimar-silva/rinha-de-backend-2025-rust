@@ -48,9 +48,12 @@ jobs:
             docker compose up --build -d 1> /dev/null 2>&1
           popd > /dev/null
 
+      - name: 📈 Create reports folder
+        run: mkdir -p reports/{backend-01,backend-02}
+
       - name: 🚀 Setup ${{ github.repository_owner }} Backend
         run: |
-          docker compose --profile prod up --build -d 1> /dev/null 2>&1    
+          docker compose --profile perf up --build -d 1> /dev/null 2>&1    
 
       - name: 🔍 Check running containers
         run: |         
@@ -72,13 +75,19 @@ jobs:
           echo "Containers Still running:"
           docker ps
           echo "Stopping containers..."
-          docker compose --profile prod stop --timeout 30
+          docker compose --profile perf stop --timeout 30
 
       - name: ⬆️ Upload Partial Results
         uses: actions/upload-artifact@v4
         with:
           name: partial-results-${{ github.sha }}.json
           path: ${{ env.RESULTS_FILE_PATH }}
+
+      - name: ⬆️ Upload Flamegraph
+        uses: actions/upload-artifact@v4
+        with:
+          name: flamegraph-${{ github.sha }}.json
+          path: reports/**/*.svg
 
       - name: 📊 Process Performance Results
         run: |
