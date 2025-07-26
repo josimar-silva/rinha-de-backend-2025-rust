@@ -22,8 +22,6 @@ RUN cargo build --release --locked --no-default-features
 
 FROM prod_builder AS perf_builder
 
-ENV RUSTFLAGS="-C target-cpu=native"
-
 RUN cargo build --release --locked --features perf
 COPY . .
 

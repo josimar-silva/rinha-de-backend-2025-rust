@@ -20,9 +20,6 @@ x-backend-template: &backend-template
 x-nginx-template: &nginx-template
   image: nginx:latest
   hostname: nginx
-  profiles:
-    - prod
-    - perf
   ports:
     - "9999:9999"
   volumes:
@@ -39,6 +36,8 @@ x-nginx-template: &nginx-template
 services:
   nginx:
     <<: *nginx-template
+    profiles:
+      - prod
     depends_on:
       - backend-01
       - backend-02
@@ -59,29 +58,31 @@ services:
 
   perf-nginx:
     <<: *nginx-template
+    profiles:
+      - perf
     depends_on:
       - perf-backend-01
       - perf-backend-02
 
   perf-backend-01:
     <<: *backend-template
-    image: ghcr.io/josimar-silva/rinha-de-backend-2025:0.2.1-snapshot
+    image: ghcr.io/josimar-silva/rinha-de-backend-2025:0.2.0
     hostname: backend-01
     profiles:
       - perf
     stop_signal: SIGINT
     volumes:
-      - ./reports:/app/reports
+      - ./reports/backend-01:/app/reports
 
   perf-backend-02:
     <<: *backend-template
-    image: ghcr.io/josimar-silva/rinha-de-backend-2025:0.2.1-snapshot
+    image: ghcr.io/josimar-silva/rinha-de-backend-2025:0.2.0
     hostname: backend-02
     profiles:
       - perf
     stop_signal: SIGINT
     volumes:
-      - ./reports:/app/reports
+      - ./reports/backend-02:/app/reports
 
   redis:
     image: redis:8.0.3-alpine

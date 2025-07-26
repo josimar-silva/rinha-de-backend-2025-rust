@@ -53,7 +53,7 @@ jobs:
 
       - name: 🚀 Setup ${{ github.repository_owner }} Backend
         run: |
-          docker compose --profile perf --build -d 1> /dev/null 2>&1    
+          docker compose --profile perf up --build -d 1> /dev/null 2>&1    
 
       - name: 🔍 Check running containers
         run: |         
